@@ -38,7 +38,8 @@ async function setUpd(tab,rows,live,r){r=r||{src:live?"live":"sample"};const u=$
  const t=await syncTime(tab,rows);const stale=!!(t&&t.d&&Date.now()-t.d>STALE);CUR={src:r.src,stale,tab,at:r.at};
  let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(stale?" · stale":""):"Last synced: not in Sheet";
  if(r.src==="cached"&&r.at)txt+=" · saved copy from "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
- u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached")}
+ u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached");TABST[cur]={c:Object.assign({},CUR),upd:txt,cls:stale||r.src==="cached"}}
+const TABST={};
 const keyMsg=()=>{const b=ShiftData.status.bad;if(b==="key")return "Key didn't work, using sample data";
  if(CUR.src==="cached")return "Couldn't refresh, showing saved live data";if(b==="net"&&CUR.src==="sample"&&ShiftData.Key.get())return "Couldn't reach live data, using sample data";return ""};
 function keyBanner(){let b=$("#keybanner");const m=keyMsg();if(!b){b=document.createElement("p");b.id="keybanner";b.className="err";b.setAttribute("role","alert");b.style.margin="0 16px 8px";$("#upd").after(b)}
@@ -118,6 +119,9 @@ function laborPlan(r,LP,TP,CH,SL,BR){r=(r||[]).filter(x=>!/^(header|example)$/i.
 async function whoHome(){try{const {rows}=await Promise.race([roster(),new Promise((_,j)=>setTimeout(()=>j(new Error("slow")),2500))]),now=shiftNow();const sr=rows.filter(x=>x.date===now.date&&x.shift===now.shift);if(!sr.length)return "";
  const m=sr.filter(x=>String(x.role).toLowerCase()==="manager").map(x=>first(x.first_name)).join(", ")||"—",c=sr.length-sr.filter(x=>String(x.role).toLowerCase()==="manager").length;
  return `<button class="card tool" type="button" data-go="whoson">${I("users")}<span><b>Who's on · ${esc(m)}</b><span class="meta">${c} crew this shift</span></span>${I("chevron-right","cv")}</button>`}catch(e){return ""}}
+// Resolve p, or after ms resolve with fb() (or fb) so a screen never waits on a slow queued call.
+const within=(p,ms,fb)=>new Promise(res=>{let d=0;const t=setTimeout(()=>{if(!d){d=1;res(typeof fb==="function"?fb():fb)}},ms);p.then(v=>{clearTimeout(t);if(!d){d=1;res(v)}},e=>{clearTimeout(t);if(!d){d=1;res(typeof fb==="function"?fb():fb)}})});
+let FLATE={};
 const S={
 async home(){const r=await get("Brief"),b=r[0]||{};
  const sa=n(b.sales_actual),sp=n(b.sales_projection),la=n(b.labor_actual_pct),lp=n(b.labor_projection_pct);
@@ -185,17 +189,18 @@ async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return 
  r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${isNaN(l)?"":chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div>${isNaN(l)?"":`<div class="meta">last week ${l}</div>`}</div>`}).join("")+
  (cm.length?`<details class="card more"><summary>Survey low-score comments: ${cm.length}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")+cmt},
 
-async floor(){await toolSync();const F=window.Floor;const sub=floorSub;
+async floor(){FLATE=FLATE||{};await within(toolSync(),2000,null);const F=window.Floor;const sub=floorSub;
  const tabs=[["positions","Positions"],["breaks","Breaks"],["checklist","Checklist"],["fixes","Fixes"],["handoff","Notes"]];
  const seg=`<div class="seg" role="tablist">${tabs.map(([k,l])=>`<button type="button" role="tab" data-sub="${k==="handoff"?"notes":k}" class="${k===sub?"on":""}" aria-selected="${k===sub}">${l}</button>`).join("")}</div>`;
- const rows=await F.list(sub);const store=`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
+ const lp=F.list(sub).then(v=>{try{localStorage.setItem("shifthub_flc_"+sub,JSON.stringify(v))}catch(e){}return v});let late=false;
+ const rows=await within(lp,2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE[sub]||0)<30000)return;FLATE[sub]=Date.now();if(cur==="floor"&&floorSub===sub&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("floor")},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_"+sub)||"[]")}catch(e){return[]}});const store=`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
  const tm=ts=>new Date(ts).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  const chkRow=(x,attr)=>`<label class="chk"><input type="checkbox" ${attr}="${esc(x.id)}" ${x.done?"checked":""}><span class="box">${I("check")}</span><span>${esc(x.item)}</span></label>`;
  let body="",bar="";
  if(sub==="positions"){const now=shiftNow(),sl=(SHIFTS.find(x=>x[0]===now.shift)||[])[1];
   const today=rows.filter(x=>!x.date||x.date===now.date&&(!x.shift||x.shift===now.shift));
   const placed={};today.forEach(x=>placed[String(x.name).toLowerCase()]=x.position);
-  let crew=[];try{crew=(await roster()).rows.filter(x=>x.date===now.date&&x.shift===now.shift).sort((a,b)=>(String(b.role).toLowerCase()==="manager")-(String(a.role).toLowerCase()==="manager"))}catch(e){}
+  let crew=[];try{crew=(await within(roster(),1500,()=>({rows:[]}))).rows.filter(x=>x.date===now.date&&x.shift===now.shift).sort((a,b)=>(String(b.role).toLowerCase()==="manager")-(String(a.role).toLowerCase()==="manager"))}catch(e){}
   POSOPTS=[...new Set([...crew.filter(x=>String(x.role).toLowerCase()!=="manager").map(x=>String(x.position||"").trim()),...rows.map(x=>String(x.position||"").trim()),"Grill","Fries","Front counter","Drive-thru order","Drive-thru window","Lobby"].filter(Boolean))];
   body=(today.length?`<div class="sec">Placed now</div><div class="list">${today.map(x=>`<div class="row"><span class="v txt">${esc(x.position)}</span><b>${esc(first(x.name))}</b></div>`).join("")}</div>`:empty("No one placed on this shift yet. Tap Place next to a crew member below."))+
   `<div class="sec">On the roster · ${esc(sl||"")}</div>`+(crew.length?`<div class="list">${crew.map((x,i)=>{const nm=first(x.first_name),pl=placed[nm.toLowerCase()];
@@ -211,7 +216,7 @@ async floor(){await toolSync();const F=window.Floor;const sub=floorSub;
   bar=`<input id="fi" placeholder="Fix to do" aria-label="Fix"><button class="btn primary sq" data-act="fix" aria-label="Add">${I("plus")}</button>`}
  if(sub==="handoff"){body=rows.length?`<div class="list">${rows.slice(-10).reverse().map(x=>`<div class="row" style="display:block;padding:12px 0"><div class="note-ts">${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${esc(x.note)}</div>`).join("")}</div>`:empty("No handoff notes yet. Leave one for the next manager below.");
   bar=`<input id="hn" placeholder="Note for next manager" aria-label="Note"><button class="btn primary sq" data-act="hand" aria-label="Save note">${I("plus")}</button>`}
- return back+seg+body+store+`<div class="addbar">${bar}</div>`}
+ return back+seg+body+(late?`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`:store)+`<div class="addbar">${bar}</div>`}
 };
 // ---- Guest comments ----
 // Display-side scrub for guest text: emails, phone numbers, long digit runs (order/card numbers).
@@ -328,7 +333,7 @@ S.crewnotes=async()=>{await toolSync();const rows=(await Floor.list("crewnotes")
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v15";
+const APPVER="v16";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -373,9 +378,11 @@ async function show(s,o={}){const my=++seq,moved=shown!==s;cur=s;shown=s;$("#tit
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
  const had=!o.fresh&&VIEW[s];if(had)app.innerHTML=VIEW[s];else if(moved||o.fresh)app.innerHTML=empty("Loading…");
  if(moved)scrollTop_(s);
- try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(h!==VIEW[s]||!had){app.innerHTML=h;VIEW[s]=h;if(moved&&!had)scrollTop_(s)}}catch(e){if(my!==seq)return;if(had)return;delete VIEW[s];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
+ try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(h!==VIEW[s]||!had){app.innerHTML=h;VIEW[s]=h;if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[s];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
 }
+// Pill + Last synced always reflect the screen on show, even if another screen's late load touched them.
+function repill(s){const t=TABST[s];if(!t||s==="settings")return;CUR=Object.assign({},t.c);const u=$("#upd");u.textContent=t.upd;u.classList.toggle("stale",t.cls);setSrc(CUR.src!=="sample",CUR.src)}
 function scrollTop_(s){const nw=document.querySelector(".card.now");if(nw&&s==="whoson")nw.scrollIntoView({block:"center"});else window.scrollTo(0,0)}
 document.querySelectorAll("[data-i]").forEach(el=>el.outerHTML=I(el.dataset.i));
 $("#gear").innerHTML=I("settings");
