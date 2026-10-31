@@ -1,3 +1,5 @@
+const SHEET_ID='1l38D2P-4PChIBz9gwbMJbe416WYJdaMKucXFQlQQzKY';
+function ss_(){return SpreadsheetApp.openById(SHEET_ID);}
 /** Shift Hub backend. Paste into the "Shift Hub Data" sheet: Extensions > Apps Script.
  * Key lives in Project Settings > Script properties: SHIFTHUB_KEY. Never put the key in this file.
  * GET  ?key=K&tab=Brief|Labor|Events|Speed|SMG|Roster|Comments|Meta   -> {rows:[{header:value,...}]}
@@ -20,9 +22,9 @@ function out_(o){return ContentService.createTextOutput(JSON.stringify(o)).setMi
 function auth_(e){const k=PropertiesService.getScriptProperties().getProperty('SHIFTHUB_KEY');
   if(!k||String(e.parameter.key||'')!==k) throw new Error('bad key');}
 function kind_(e){const kind=e.parameter.kind;if(KINDS.indexOf(kind)<0)throw new Error('bad kind');return kind;}
-function floor_(kind){const ss=SpreadsheetApp.getActive(),c=COLS[kind],name=c?c.sheet:'Floor_'+kind;let s=ss.getSheetByName(name);
+function floor_(kind){const ss=ss_(),c=COLS[kind],name=c?c.sheet:'Floor_'+kind;let s=ss.getSheetByName(name);
   if(!s){s=ss.insertSheet(name);s.appendRow(c?['id','ts'].concat(c.cols):['id','ts','json']);s.setFrozenRows(1);}return s;}
-function tabRows_(name){const s=SpreadsheetApp.getActive().getSheetByName(name);if(!s)return[];
+function tabRows_(name){const s=ss_().getSheetByName(name);if(!s)return[];
   const v=s.getDataRange().getDisplayValues();const h=v.shift()||[];
   return v.filter(r=>r.some(c=>c!=='')).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]);return o;});}
 function floorRows_(s,kind){const v=s.getDataRange().getValues();const h=v.shift()||[];
