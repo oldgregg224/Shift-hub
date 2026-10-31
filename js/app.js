@@ -299,7 +299,8 @@ const DAYS=["sun","mon","tue","wed","thu","fri","sat"],DFULL=["Sunday","Monday",
 const DRE="(?<![a-z])(sun|mon|tue|wed|thu|fri|sat)(?:days|day|nesdays|nesday|sdays|sday|rsdays|rsday|urdays|urday|rs|r|s|\\.)?(?![a-z])";
 const ntime=x=>{x=String(x).trim().toLowerCase();if(/^noon|^midday/.test(x))return 720;if(/^midnight/.test(x))return 1440;const m=x.match(/^(\d{1,2})(?::(\d{2}))?\s*(a|p)?/);if(!m)return NaN;let h=+m[1];if(m[3]){if(h===12)h=0;if(m[3]==="p")h+=12}else if(h>=1&&h<=6)h+=12;return h*60+(+(m[2]||0))};
 const fmtM=m=>{m%=1440;const h=Math.floor(m/60),mi=m%60;return (h%12||12)+(mi?":"+String(mi).padStart(2,"0"):"")+(h<12?" AM":" PM")};
-function availWarn(notes,iv){const n=String(notes||"").toLowerCase();if(!n.trim())return[];const out=[];const st=iv[0]%1440,en=st+(iv[1]-iv[0]),wd=(Math.floor(iv[0]/1440)+3)%7; /* dayN() rounds noon-UTC up, so epoch day index is +1 */
+const HARRI_OV=/per harri schedule availability overlay|day mapping not shown/i,AV_NOMAP="Availability not mapped to days (check Harri)";
+function availWarn(notes,iv){const n=String(notes||"").toLowerCase();if(!n.trim())return[];if(HARRI_OV.test(n))return[];const out=[];const st=iv[0]%1440,en=st+(iv[1]-iv[0]),wd=(Math.floor(iv[0]/1440)+3)%7; /* dayN() rounds noon-UTC up, so epoch day index is +1 */
  const T="(noon|midday|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:[ap]\\.?m\\.?|[ap](?![a-z]))?)(?![\\d/:.-]|\\s*(?:hours?|hrs?|h\\b|days?|shifts?|weeks?|min))";let m;
  if((m=n.match(new RegExp("(?:after|from|not before|starting(?: at)?)\\s+"+T)))){const t=ntime(m[1]);if(!isNaN(t)&&st<t)out.push("Note: after "+fmtM(t))}
  if((m=n.match(new RegExp("(?:before|until|till|by|not after)\\s+"+T)))){const t=ntime(m[1]);if(!isNaN(t)&&en>t)out.push("Note: until "+fmtM(t))}
@@ -356,14 +357,14 @@ function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!i
   const basis=!known.length?"none":sch!==null&&(so===null||sch>=so)?"scheduled":"so far",proj=Math.round((base+len)*100)/100;
   const mine=[],maybe=[];rs.forEach(r=>{const m=nmatch(pn,r.pn,dup[pn.f]||0);if(m===1)mine.push(r);else if(m===2)maybe.push(r)});
   const hit=r=>r.sp[0]<iv[1]&&iv[0]<r.sp[1];const ov=mine.filter(hit),ovm=maybe.filter(hit);const why=[];
-  if(!hasRole)why.push(role?"different role":"no role");if(stn&&(lvl===null||(lvl>0&&lvl<min)))why.push(lvl===null?"no "+stn+" level":stn+" level "+lvl+" < "+min);
+  if(!hasRole)why.push(role?"different role":"no role");if(stn&&(lvl===null||!(lvl>=Math.max(1,min))))why.push(lvl===null?"no "+stn+" level":!lvl?stn+" not rated":stn+" level "+lvl+" < "+min);
   if(ov.length)why.push("overlap");if(proj>cap)why.push("over "+cap);
   let warn=[];if(!why.length){warn=restWarn(mine,iv);const rm=restWarn(maybe,iv);
    if(ovm.length||rm.length||outM===2)warn.push("name match uncertain"+(outM===2?" (called-out?)":ovm.length?" (possible overlap)":" (possible short rest)"));}
   warn=warn.concat(availWarn(c.availability_notes,iv));
   const lateLvl=Math.max(0,...LATE_ST.map(s=>sk.st[s]||0));
-  const o={name:dname(c.first_name),role:sk.role||sk.old.join(", "),st:sk.st,lvl,notes:c.availability_notes||"",so,sch,base,basis,proj,ov:ov.concat(ovm),why,warn,lateLvl};(why.length?no:ok).push(o)});
- ok.sort((a,b)=>(a.warn.length>0)-(b.warn.length>0)||(late&&!a.warn.length&&!b.warn.length?b.lateLvl-a.lateLvl:0)||a.proj-b.proj||a.name.localeCompare(b.name));const counts={};no.forEach(o=>o.why.forEach(w=>{const k=/level/.test(w)?"station level":w;counts[k]=(counts[k]||0)+1}));return{len,ok,no,iv,late,counts}}
+  const o={name:dname(c.first_name),role:sk.role||sk.old.join(", "),st:sk.st,lvl,notes:HARRI_OV.test(String(c.availability_notes||""))?"":c.availability_notes||"",nomap:HARRI_OV.test(String(c.availability_notes||"")),so,sch,base,basis,proj,ov:ov.concat(ovm),why,warn,lateLvl};(why.length?no:ok).push(o)});
+ ok.sort((a,b)=>(a.warn.length>0)-(b.warn.length>0)||(late&&!a.warn.length&&!b.warn.length?b.lateLvl-a.lateLvl:0)||a.proj-b.proj||a.name.localeCompare(b.name));const counts={};no.forEach(o=>o.why.forEach(w=>{const k=/level/.test(w)?"station level":w;counts[k]=(counts[k]||0)+1}));return{len,ok,no,iv,late,counts,rsN:rs.length}}
 window.covRank=covRank;
 let COV={sel:"",role:"",station:"",min:"1",date:"",start:"",end:"",ran:false};
 const SEL='style="width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line,#d5dbe3);border-radius:12px;background:var(--surface,#fff);color:var(--ink,#111);font:inherit;font-size:16px;margin-top:2px"';
@@ -383,7 +384,7 @@ S.cover=async()=>{const R=within(roster(),2500,()=>({rows:[],live:false,r:{src:"
  <div id="cvman" class="stack" style="gap:8px${sel==="manual"?"":";display:none"}"><label class="meta" style="margin:0;display:block;overflow:visible">Role<select id="cvrole" aria-label="Role" ${SEL}>${o_("","Choose a role…",!COV.role)}${roles.map(x=>o_(x,x,x===COV.role)).join("")}</select></label>
  <label class="meta" style="margin:0">Date<input id="cvdate" type="date" aria-label="Date" style="width:100%" value="${esc(COV.date||d0)}"></label><div style="display:flex;gap:8px"><label class="meta" style="flex:1;margin:0">Start<input id="cvs" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="e.g. 11a, 2:30p, 1400" aria-label="Start time" data-tm value="${esc(COV.start||ampm(tmin(defS)))}" style="width:100%"><small class="tmok" data-for="cvs"></small></label><label class="meta" style="flex:1;margin:0">End<input id="cve" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="e.g. 11a, 2:30p, 1400" aria-label="End time" data-tm value="${esc(COV.end||ampm(tmin(defE)))}" style="width:100%"><small class="tmok" data-for="cve"></small></label></div></div>
  <div style="display:flex;gap:8px"><label class="meta" style="flex:2;margin:0;display:block;overflow:visible">Station (optional)<select id="cvst" aria-label="Station" ${SEL}>${o_("","Any station",!COV.station)}${sts.map(x=>o_(x,x[0]+x.slice(1).toLowerCase(),x===COV.station)).join("")}</select></label>
- <label class="meta" style="flex:1;margin:0;display:block;overflow:visible">Min level<select id="cvmin" aria-label="Minimum station level" ${SEL}>${[1,2,3,4,5].map(n=>o_(n,n===1?"Any":n+"+",String(n)===String(COV.min))).join("")}</select></label></div>
+ <label class="meta" style="flex:1;margin:0;display:block;overflow:visible">Min level<select id="cvmin" aria-label="Minimum station level" ${SEL}>${[1,2,3,4,5].map(n=>o_(n,n===1?"Any rated (1+)":n+"+",String(n)===String(COV.min))).join("")}</select></label></div>
  <button class="btn primary block" type="button" data-act="cover">Find cover</button></div>`;
  if(!COV.ran)return head+form+(crew.length?"":`<p class="upd" style="padding:0;text-align:center">No Coverage rows in the Sheet yet</p>`);
  let t;if(sel!=="manual"&&rows[+sel]){const x=rows[+sel];t={role:x.position,date:x.date,start:x.start,end:x.end,out:x.first_name}}else {const nz=x=>{const m=tmin(x);return isNaN(m)?x:hhmm(m)};t={role:COV.role,date:COV.date||d0,start:nz(COV.start||defS),end:nz(COV.end||defE)}}
@@ -391,12 +392,12 @@ S.cover=async()=>{const R=within(roster(),2500,()=>({rows:[],live:false,r:{src:"
  if(!String(t.role).trim())return head+form+`<p class="meta">Choose a role.</p>`;
  const res=covRank(rows,crew,t);if(res.error)return head+form+`<p class="meta">${esc(res.error)}.</p>`;
  const sn=t.station?t.station[0]+t.station.slice(1).toLowerCase():"";
- const sum=`<div class="card"><div class="lbl">${esc(t.role)}${sn?" · "+esc(sn)+(+t.min>1?" "+t.min+"+":""):""} · ${esc(t.date)} ${clock(t.start,1)}–${clock(t.end,1)}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:8">${t.out?"Called out: <b>"+esc(dname(t.out))+"</b> (not suggested). ":""}Matches Roster role exactly. Hours = scheduled hours this week (or hours so far if higher, when the Sheet has them) plus this shift; must stay at or under 40 h. People with a caution are listed last.${res.late?" <b>Runs past 10 PM:</b> among people without a caution, higher Window / Grill regular menu level (per Harri) comes first, then hours.":""}</div></div>`;
+ const sum=`<div class="card"><div class="lbl">${esc(t.role)}${sn?" · "+esc(sn)+(+t.min>1?" "+t.min+"+":""):""} · ${esc(t.date)} ${clock(t.start,1)}–${clock(t.end,1)}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:8">${t.out?"Called out: <b>"+esc(dname(t.out))+"</b> (not suggested). ":""}Matches Roster role exactly. Hours = scheduled hours this week (or hours so far if higher, when the Sheet has them) plus this shift; must stay at or under 40 h. People with a caution are listed last.${t.station?" Station filter: needs a "+esc(sn)+" level of "+Math.max(1,+t.min)+" or higher in Harri (unrated or missing = not suggested).":""} ${r&&r.src==="slow"?"<b>Roster didn't load in time — overlap and rest were NOT checked.</b>":"Checked against "+res.rsN+" Roster shift"+(res.rsN===1?"":"s")+" on "+esc(t.date)+" ± 1 day."}${res.late?" <b>Runs past 10 PM:</b> among people without a caution, higher Window / Grill regular menu level (per Harri) comes first, then hours.":""}</div></div>`;
  const lv=n=>n===null||n===undefined?"—":n===0?"listed, no level":"level "+n;
  const card=o=>`<div class="row" style="display:block;padding:10px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(o.name)}</b>${chip(o.proj>40?"bad":o.proj>=36?"warn":"good",h1(o.proj)+" h projected")}</div>
   <div class="meta" style="margin:2px 0 0">${esc(o.role||"No role listed")}${t.station?` · ${esc(sn)}: ${lv(o.lvl)} <small>(per Harri)</small>`:""}${res.late&&!t.station?` · Window/Grill: ${o.lateLvl?"level "+o.lateLvl:"—"} <small>(per Harri)</small>`:""}</div>
   <div class="meta" style="margin:2px 0 0">${o.sch!==null?"Scheduled "+h1(o.sch)+" h":"Scheduled hours not in Sheet"}${o.so!==null?" · so far "+h1(o.so)+" h":""} · used ${o.basis==="none"?"0 h (no hours in Sheet)":o.basis+" ("+h1(o.base)+" h)"} + ${h1(res.len)} h</div>
-  ${o.warn&&o.warn.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0">${o.warn.map(w=>chip("warn",w)).join("")}</div>`:""}${o.notes?`<div class="meta" style="margin:2px 0 0">Availability: ${esc(o.notes)}</div>`:""}
+  ${o.warn&&o.warn.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0">${o.warn.map(w=>chip("warn",w)).join("")}</div>`:""}${o.nomap?`<div style="margin:4px 0 0">${chip("neutral",AV_NOMAP)}</div>`:""}${o.notes?`<div class="meta" style="margin:2px 0 0">Availability: ${esc(o.notes)}</div>`:""}
   ${o.why.length?`<div class="meta" style="margin:2px 0 0">Excluded: ${o.why.map(w=>w==="overlap"?"overlap ("+o.ov.map(r=>esc(r.position||"shift")+" "+clock(r.start,1)+"–"+clock(r.end,1)+(r.date!==t.date?" "+esc(r.date):"")).join(", ")+")":esc(w)).join(" · ")}</div>`:""}</div>`;
  return head+form+sum+`<div class="sec">Can cover (${res.ok.length})</div>`+(res.ok.length?`<div class="list">${res.ok.map(card).join("")}</div>`:empty("No one fits this shift"))+
   (res.no.length?`<details class="card"><summary class="row"><span class="v txt">Not suggested (${res.no.length})<small>${Object.entries(res.counts).map(([k,n])=>esc(k)+" "+n).join(" · ")}</small></span>${I("chevron-down","cv")}</summary><div class="list">${res.no.map(card).join("")}</div></details>`:"")};
@@ -480,7 +481,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v30";
+const APPVER="v31";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -544,12 +545,12 @@ function paint(h){const a=document.activeElement,fid=a&&app.contains(a)&&a.id?a.
 async function show(s,o={}){try{window.FloorSync&&window.FloorSync()}catch(e){}const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,moved=shown!==vk;cur=s;shown=vk;
  try{ShiftData.setFocus(s==="floor"?[floorSub,"Roster","Brief","Meta"]:FOCUS[s]||[s,"Brief","Meta"])}catch(e){}$("#title").textContent=TITLE[s];
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
- if(!o.fresh&&!VIEW[vk]){const pv=pvGet(vk);if(pv)VIEW[vk]=pv}
+ if(s==="cover")delete VIEW[vk];if(!o.fresh&&!VIEW[vk]&&s!=="cover"){const pv=pvGet(vk);if(pv)VIEW[vk]=pv}
  const had=!o.fresh&&VIEW[vk];if(moved){if(had)app.innerHTML=VIEW[vk];else app.innerHTML=empty("Loading…")}else if(o.fresh)app.innerHTML=empty("Loading…");
  if(moved)scrollTop_(s);
  try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;
   if(!moved&&!o.force&&editing()){VIEW[vk]=h;DEFER=s;repill(s);return}
-  if(h!==VIEW[vk]||!had||!moved){paint(h);VIEW[vk]=h;pvSet(vk,h);if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[vk];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
+  if(h!==VIEW[vk]||!had||!moved){paint(h);VIEW[vk]=h;if(s!=="cover")pvSet(vk,h);if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[vk];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
 }
 // Pill + Last synced always reflect the screen on show, even if another screen's late load touched them.
@@ -613,7 +614,7 @@ if(window.caches)caches.keys().then(ks=>ks.filter(k=>k.startsWith("shifthub-")&&
 if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.controller;
  // New version took over: reload once. Guard: only if a worker controlled the page at load, and not twice within 10s.
  sw.addEventListener("controllerchange",()=>{if(!had)return;const t=+sessionStorage.getItem("shifthub_swreload")||0;if(Date.now()-t<10000)return;
-  sessionStorage.setItem("shifthub_swreload",Date.now());location.reload()});
+  sessionStorage.setItem("shifthub_swreload",Date.now());window.__shReload=1;location.reload()});
  sw.register("sw.js",{updateViaCache:"none"}).then(r=>{r.update();verCheck(r);document.addEventListener("visibilitychange",()=>{if(!document.hidden)r.update()})}).catch(()=>{})}
 })();
 
@@ -621,7 +622,7 @@ if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.contr
 // drop old caches and reload once (guarded per version so it can never loop).
 async function verCheck(reg){try{const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;const v=(await r.json()).v;
  if(!v||v===APPVER)return;const g="shifthub_reloaded_"+v;if(sessionStorage.getItem(g))return;sessionStorage.setItem(g,"1");
- try{await reg.update()}catch(e){}try{const ks=await caches.keys();await Promise.all(ks.filter(k=>k.startsWith("shifthub-")).map(k=>caches.delete(k)))}catch(e){}
- location.reload()}catch(e){}}
-if(navigator.serviceWorker){let had=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener("controllerchange",()=>{if(!had){had=true;return}
- const g="shifthub_ctl_"+APPVER;if(sessionStorage.getItem(g))return;sessionStorage.setItem(g,"1");location.reload()})}
+ try{await reg.update()}catch(e){}
+ await new Promise(res=>{const nw=reg.installing||reg.waiting;if(!nw||nw.state==="activated")return res();const t=setTimeout(res,6000);nw.addEventListener("statechange",()=>{if(nw.state==="activated"){clearTimeout(t);res()}})});try{const ks=await caches.keys();await Promise.all(ks.filter(k=>k.startsWith("shifthub-")).map(k=>caches.delete(k)))}catch(e){}
+ if(!window.__shReload){window.__shReload=1;location.reload()}}catch(e){}}
+
