@@ -104,3 +104,5 @@ input:focus,textarea:focus,button:focus-visible,summary:focus-visible{outline:2p
 button.alert{width:100%;text-align:left;font:inherit;border:0;border-left:4px solid var(--bad);cursor:pointer;min-height:var(--tap)}
 .pill.bad::before{background:var(--bad-bg);color:#B91C1C}
 .err{margin:0;padding:10px 12px;border-radius:12px;background:var(--bad-bg);color:#B91C1C;font-size:14px;line-height:20px}
+.sheet-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:50;display:flex;align-items:flex-end}
+.sheet{background:var(--surface,#fff);width:100%;max-height:85vh;overflow:auto;border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}

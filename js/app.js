@@ -60,10 +60,10 @@ async home(){const r=await get("Brief"),b=r[0]||{};
  kpi("Guest notes",cm,"new comments",null,null,"guest",1)+
  kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+await whoHome()},
 
-async labor(){const r=await get("Labor");if(!r.length)return empty("No labor data yet");
+async labor(){const r=await get("Labor");if(!r.length)return keyAlert()+empty("No labor data yet");
  const callSt=c=>{c=String(c||"").toUpperCase();return c.includes("EARLY")?"bad":c.includes("HOLD")?"warn":"good"};
  const N=nowRow(r),cur=N.x,cl=n(cur.labor_pct),ct=n(cur.target_pct)||21.5,cs=status(cl,ct,"labor");
- return `<div class="card"><div class="lbl">${N.lbl}${chip(cs,sgn(cl-ct,1)+" · "+WORD[cs])}</div><div class="hero">${pct(cl)}</div>
+ return keyAlert()+`<div class="card"><div class="lbl">${N.lbl}${chip(cs,sgn(cl-ct,1)+" · "+WORD[cs])}</div><div class="hero">${pct(cl)}</div>
  <div class="meta" style="display:flex;align-items:center;gap:8px">target ${pct(ct)} ${cur.call?chip(callSt(cur.call),cur.call):""}</div></div>
  <div class="sec">By hour</div><div class="list">${r.map(x=>{const l=n(x.labor_pct),t=n(x.target_pct)||21.5;
  return `<details><summary class="row"><span class="t">${clock(x.hour,1)}</span><span class="v">${pct(l)}<small>${esc(x.actual_hours)} of ${esc(x.cap_hours)} hrs · ${chip(status(l,t,"labor")).replace(/<[^>]+>/g,"")}</small></span>${x.call?chip(callSt(x.call),x.call):""}${I("chevron-down","cv")}</summary>
@@ -74,24 +74,24 @@ async rushes(){const r=await get("Events");const d0=new Date(),today=`${d0.getFu
  const win=x=>{const a=clock(x.rush_window_start).replace(":00",""),b=clock(x.rush_window_end).replace(":00","");const pa=a.slice(-2);return (b.endsWith(pa)&&/[AP]M$/.test(a)?a.slice(0,-3):a)+"–"+b};
  const day=s=>{const d=new Date(s+"T12:00:00");return isNaN(d)?esc(s):d.toLocaleDateString("en-US",{weekday:"short"})+" "+d.getDate()};
  const src=x=>x.source_url?`<a class="src-link" href="${safeUrl(x.source_url)}" target="_blank" rel="noopener noreferrer">${I("external-link")}Source</a>`:"";
- return `<div class="sec">Today</div>`+(t.length?t.map(x=>`<div class="card"><div class="lbl">${esc(x.event)}</div><div class="hero sm">${win(x)}</div>
+ return keyAlert()+`<div class="sec">Today</div>`+(t.length?t.map(x=>`<div class="card"><div class="lbl">${esc(x.event)}</div><div class="hero sm">${win(x)}</div>
  ${x.runner_timing?`<div style="margin-top:8px">${chip("neutral",x.runner_timing)}</div>`:""}${x.prep_notes?`<div class="meta">${esc(x.prep_notes)}</div>`:""}${src(x)}</div>`).join(""):empty("No events today"))+
  `<div class="sec">Next 7 days</div>`+(nx.length?`<div class="list">${nx.map(x=>`<details><summary class="row">${chip("neutral",day(x.date))}<span class="v txt">${esc(x.event)}<small>${win(x)}</small></span>${I("chevron-down","cv")}</summary>
  <div class="det" style="padding-left:0">${x.prep_notes?`<div><b>Prep:</b> ${esc(x.prep_notes)}</div>`:""}${x.runner_timing?`<div><b>Runner:</b> ${esc(x.runner_timing)}</div>`:""}${src(x)}</div></details>`).join("")}</div>`:empty("Nothing coming up"))},
 
-async speed(){const r=await get("Speed");if(!r.length)return empty("No speed data yet");
+async speed(){const r=await get("Speed");if(!r.length)return keyAlert()+empty("No speed data yet");
  const st=x=>x.slow_flag==="Y"?"bad":status(n(x.oepe_sec),n(x.last_week_oepe_sec),"oepe");
  const N=nowRow(r),cur=N.x,cd=n(cur.oepe_sec)-n(cur.last_week_oepe_sec);
  const tips=r.filter(x=>x.pre_rush_positioning_note);
- return `<div class="card"><div class="lbl">${N.lbl}${chip(st(cur),isNaN(cd)?WORD[st(cur)]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(n(cur.oepe_sec))}</div><div class="meta">OEPE · last week ${mmss(n(cur.last_week_oepe_sec))}</div></div>`+
+ return keyAlert()+`<div class="card"><div class="lbl">${N.lbl}${chip(st(cur),isNaN(cd)?WORD[st(cur)]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(n(cur.oepe_sec))}</div><div class="meta">OEPE · last week ${mmss(n(cur.last_week_oepe_sec))}</div></div>`+
  tips.map(x=>`<div class="tip">${I("lightbulb")}<span>${esc(x.pre_rush_positioning_note)}</span></div>`).join("")+
  `<div class="sec">OEPE by hour</div><div class="list">${r.map(x=>{const d=n(x.oepe_sec)-n(x.last_week_oepe_sec),s=st(x),o=n(x.order_sec)||0,c=n(x.cash_sec)||0,w=n(x.second_window_sec)||0;
  return `<details><summary class="row"><span class="t">${clock(x.hour,1)}</span><span class="v">${mmss(n(x.oepe_sec))}<small>LW ${mmss(n(x.last_week_oepe_sec))} · total ${mmss(n(x.total_time_sec))}</small></span>${chip(s,(isNaN(d)?"":sgn(d)+"s ")+(s==="bad"?"Slow":s==="warn"?"Watch":""))}${I("chevron-down","cv")}</summary>
  <div class="det"><div><b>Total:</b> ${mmss(n(x.total_time_sec))} (LW ${mmss(n(x.last_week_total_sec))})</div>${o+c+w?`<div class="bar"><i style="flex:${o};background:var(--accent)"></i><i style="flex:${c};background:var(--ink-3)"></i><i style="flex:${w};background:var(--warn)"></i></div><div>Order ${o}s · Cash ${c}s · 2nd window ${w}s</div>`:""}</div></details>`}).join("")}</div>`},
 
-async guest(){const r=await get("SMG");if(!r.length)return empty("No guest scores yet");const f=r.find(x=>x.coaching_focus);
+async guest(){const r=await get("SMG");if(!r.length)return keyAlert()+empty("No guest scores yet");const f=r.find(x=>x.coaching_focus);
  const cm=r.filter(x=>x.low_score_comment_names_removed);
- return (f?`<div class="tip">${I("target")}<span>${esc(f.coaching_focus)}</span></div>`:"")+
+ return keyAlert()+(f?`<div class="tip">${I("target")}<span>${esc(f.coaching_focus)}</span></div>`:"")+
  r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div><div class="meta">last week ${isNaN(l)?"—":l}</div></div>`}).join("")+
  (cm.length?`<details class="card more"><summary>${cm.length} low-score comment${cm.length>1?"s":""}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")},
 
@@ -106,10 +106,11 @@ async floor(){$("#upd").textContent="";const F=window.Floor;const sub=floorSub;
  if(sub==="positions"){const now=shiftNow(),sl=(SHIFTS.find(x=>x[0]===now.shift)||[])[1];
   const today=rows.filter(x=>!x.date||x.date===now.date&&(!x.shift||x.shift===now.shift));
   const placed={};today.forEach(x=>placed[String(x.name).toLowerCase()]=x.position);
-  let crew=[];try{crew=(await roster()).rows.filter(x=>x.date===now.date&&x.shift===now.shift&&String(x.role).toLowerCase()!=="manager")}catch(e){}
+  let crew=[];try{crew=(await roster()).rows.filter(x=>x.date===now.date&&x.shift===now.shift).sort((a,b)=>(String(b.role).toLowerCase()==="manager")-(String(a.role).toLowerCase()==="manager"))}catch(e){}
+  POSOPTS=[...new Set([...crew.filter(x=>String(x.role).toLowerCase()!=="manager").map(x=>String(x.position||"").trim()),...rows.map(x=>String(x.position||"").trim()),"Grill","Fries","Front counter","Drive-thru order","Drive-thru window","Lobby"].filter(Boolean))];
   body=(today.length?`<div class="sec">Placed now</div><div class="list">${today.map(x=>`<div class="row"><span class="v txt">${esc(x.position)}</span><b>${esc(first(x.name))}</b></div>`).join("")}</div>`:empty("No one placed on this shift yet. Tap Place next to a crew member below."))+
   `<div class="sec">On the roster · ${esc(sl||"")}</div>`+(crew.length?`<div class="list">${crew.map((x,i)=>{const nm=first(x.first_name),pl=placed[nm.toLowerCase()];
-   return `<div class="row"><span class="v txt">${esc(nm)}<small>${esc(x.position)} · ${clock(x.start,1)}–${clock(x.end,1)}</small></span>${pl?chip("good",pl):""}<button class="btn" type="button" data-place="${esc(nm)}" data-pos="${esc(x.position)}" aria-label="Place ${esc(nm)}">${pl?"Move":"Place"}</button></div>`}).join("")}</div>`:empty("No crew on today's roster for this shift. Add Roster rows in the Sheet, or place someone below."));
+   return `<div class="row"><span class="v txt">${esc(nm)}<small>${esc(x.position)} · ${clock(x.start,1)}–${clock(x.end,1)}</small></span>${String(x.role).toLowerCase()==="manager"?chip("neutral","Manager"):""}${pl?chip("good",pl):""}<button class="btn" type="button" data-place="${esc(nm)}" data-pos="${esc(x.position)}" aria-label="Place ${esc(nm)}">${pl?"Move":"Place"}</button></div>`}).join("")}</div>`:empty("No crew on today's roster for this shift. Add Roster rows in the Sheet, or place someone below."));
   bar=`<input id="pp" placeholder="Position" aria-label="Position"><input id="pn" placeholder="First name" aria-label="First name" style="max-width:40%"><button class="btn primary sq" data-act="pos" aria-label="Place">${I("plus")}</button>`}
  if(sub==="breaks"){const on=rows.filter(x=>!x.back),done=rows.filter(x=>x.back);
   body=(on.length?`<div class="list">${on.map(x=>`<div class="row"><span class="v txt">${esc(x.name)}<small>out ${tm(x.ts)}</small></span><span class="chip" data-since="${esc(x.ts)}"></span><button class="btn" data-back="${esc(x.id)}">Back</button></div>`).join("")}</div>`:empty("No one on break right now. Type a first name below and tap Start."))+
@@ -215,6 +216,20 @@ S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();se
 
 const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",settings:"Settings"};
 const TABOF={floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools"};
+// Position picker sheet (replaces prompt()).
+let POSOPTS=[];
+function closeSheet(){const s=$("#sheet");if(s)s.remove()}
+function openSheet(name,cur){closeSheet();const d=document.createElement("div");d.id="sheet";d.className="sheet-bg";
+ d.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-t"><div class="lbl" id="sh-t">Place ${esc(name)}</div>
+ <div class="quick">${POSOPTS.map(p=>`<button type="button" class="btn${p===cur?" primary":""}" data-setpos="${esc(p)}">${esc(p)}</button>`).join("")}</div>
+ <div style="display:flex;gap:8px"><input id="sh-o" placeholder="Other position" aria-label="Other position"><button type="button" class="btn primary" data-setpos="">Place</button></div>
+ <button type="button" class="btn block" data-shclose>Cancel</button></div>`;
+ document.body.appendChild(d);
+ d.addEventListener("click",async e=>{if(e.target===d||e.target.closest("[data-shclose]")){closeSheet();return}
+  const b=e.target.closest("[data-setpos]");if(!b)return;const pos=(b.dataset.setpos||($("#sh-o").value||"")).trim();if(!pos){$("#sh-o").focus();return}
+  const w=shiftNow();try{await Floor.add("positions",{date:w.date,shift:w.shift,position:pos,name:first(name)});closeSheet();show("floor")}catch(err){alert("Could not save: "+err.message)}});
+ d.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet();if(e.key==="Enter"&&e.target.id==="sh-o")d.querySelector('[data-setpos=""]').click()});
+ (d.querySelector(".btn.primary")||d.querySelector("button")).focus()}
 let cur="home",floorSub="positions",timer=null;
 function tick(){document.querySelectorAll("[data-since]").forEach(el=>{const m=Math.floor((Date.now()-new Date(el.dataset.since))/60000);
  el.className="chip "+(m>=30?"bad":m>=25?"warn":"good");el.textContent=m+" min"})}
@@ -236,7 +251,7 @@ app.addEventListener("click",async e=>{const go=e.target.closest("[data-go]");if
  if(a==="key"){ShiftData.Key.set(v("k"));meta=null;show("home");return}
  if(a==="clearkey"){ShiftData.Key.set("");meta=null;show("settings");return}
  if(a==="pos"&&v("pp")){const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:v("pp"),name:first(v("pn"))})}
- else if(t.dataset.place){const pos=prompt("Position for "+t.dataset.place,t.dataset.pos||"");if(!pos||!pos.trim())return;const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:pos.trim(),name:t.dataset.place})}
+ else if(t.dataset.place){openSheet(t.dataset.place,t.dataset.pos);return}
  else if(a==="brk"&&v("bn"))await F.add("breaks",{name:first(v("bn"))});
  else if(a==="chk"&&v("ci"))await F.add("checklist",{item:v("ci")});
  else if(a==="fix"&&v("fi"))await F.add("fixes",{item:v("fi")});
@@ -254,5 +269,9 @@ app.addEventListener("click",async e=>{const go=e.target.closest("[data-go]");if
 app.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".addbar input, #k")){const b=e.target.parentElement.querySelector("[data-act]");if(b)b.click()}});
 $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
 setSrc(false);show("home");
-if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.controller;
+ // New version took over: reload once. Guard: only if a worker controlled the page at load, and not twice within 10s.
+ sw.addEventListener("controllerchange",()=>{if(!had)return;const t=+sessionStorage.getItem("shifthub_swreload")||0;if(Date.now()-t<10000)return;
+  sessionStorage.setItem("shifthub_swreload",Date.now());location.reload()});
+ sw.register("sw.js",{updateViaCache:"none"}).then(r=>{r.update();document.addEventListener("visibilitychange",()=>{if(!document.hidden)r.update()})}).catch(()=>{})}
 })();
