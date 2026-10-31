@@ -1,13 +1,18 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#da291c">
-<title>Shift Hub</title><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css"></head>
-<body><header><h1>Shift Hub</h1><span><span id="src"></span> <button id="gear" aria-label="Settings">⚙️</button></span></header>
-<div id="keybanner" hidden>🔑 Showing sample data. Tap to enter the shared key.</div>
+<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#0F172A">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Shift Hub"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Shift Hub</title><link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css"></head>
+<body>
+<header class="hd"><h1 id="title">Home</h1><div class="hd-r"><button id="src" class="pill" type="button" data-label="Sample"></button><button id="gear" class="icon-btn" type="button" aria-label="Settings"></button></div></header>
+<p id="upd" class="upd"></p>
 <main id="app"></main>
-<nav id="tabs">
-<button data-s="home">🏠<br>Brief</button><button data-s="labor">⏱️<br>Labor</button>
-<button data-s="rushes">📅<br>Rushes</button><button data-s="speed">🚗<br>Speed</button>
-<button data-s="guest">⭐<br>Guest</button><button data-s="floor">🧰<br>Floor</button></nav>
-<script src="config.js"></script><script src="js/data.js"></script><script src="js/floor.js"></script><script src="js/app.js"></script>
+<nav id="tabs" aria-label="Screens">
+<button data-s="home" type="button"><i data-i="house"></i>Home</button><button data-s="labor" type="button"><i data-i="timer"></i>Labor</button>
+<button data-s="rushes" type="button"><i data-i="calendar-clock"></i>Rushes</button><button data-s="speed" type="button"><i data-i="gauge"></i>Speed</button>
+<button data-s="guest" type="button"><i data-i="star"></i>Guest</button><button data-s="floor" type="button"><i data-i="clipboard-list"></i>Floor</button></nav>
+<script src="config.js"></script><script src="js/icons.js"></script><script src="js/data.js"></script><script src="js/floor.js"></script><script src="js/app.js"></script>
 </body></html>
