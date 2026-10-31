@@ -15,7 +15,7 @@ const Key={get:()=>{let k=ls();if(!k){k=ck();if(k)try{localStorage.setItem(KN,k)
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 const url=()=>(window.SHIFTHUB_CONFIG||{}).appsScriptUrl||"";
 // st.bad: "" | "key" (server said bad key, sticks until key changes) | "net" (latest live call failed). st.ok: a live call has succeeded.
-const st={bad:"",ok:false,netAt:0};
+const st={bad:"",ok:false,netAt:0,script:""}; // script: "" unknown | "ok" | "broken" (deployed project has no doGet)
 const canTry=()=>!!(url()&&Key.get());
 const live=()=>canTry()&&st.bad!=="key"&&st.ok;
 const TIMEOUT=30000,SAMPLE_TIMEOUT=20000,FRESH_TTL=60000,BACKOFF=[5000,15000,45000,120000];
@@ -32,7 +32,11 @@ async function api_(params,body){const u=new URL(url());
  Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));u.searchParams.set("key",Key.get());
  // GET follows Apps Script's redirect; POST uses text/plain to avoid a CORS preflight.
  const r=await fetchT(u,body?{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body),redirect:"follow"}:{redirect:"follow",cache:"no-store"});
- let j;try{j=await r.json()}catch(e){throw new Error("bad response")}if(j.error)throw new Error(j.error);return j}
+ // Apps Script answers an HTML error page (not JSON) when the deployed project has no doGet/doPost, e.g. an empty or partial paste.
+ const txt=await r.text();let j;try{j=JSON.parse(txt)}catch(e){
+  if(/Script function not found/i.test(txt)){st.script="broken";throw new Error("script broken: deployed Apps Script has no "+(body?"doPost":"doGet"))}
+  throw new Error("bad response (HTTP "+r.status+", not JSON)")}
+ st.script="ok";if(j.error)throw new Error(j.error);return j}
 const api=(params,body)=>body?api_(params,body):serial(()=>api_(params),params.kind||params.tab);
 // Last good live rows per tab: memory + localStorage (dashboard data only; no key, no guest personal info beyond what the Sheet shows).
 const LK=t=>"shifthub_live_"+t,good={},fail={},inflight={},timers={},unsup={};
@@ -59,7 +63,7 @@ async function sample(t){if(t==="Meta")return{rows:[],live:false,src:"sample"};
 // load(tab): fresh live rows -> src "live"; last good live rows (cache) -> src "cached" (refreshes in background); else sample.
 async function load(t,o={}){
  if(!canTry()||st.bad==="key")return sample(t);
- if(!unsup[t])try{const m=sessionStorage.getItem("shifthub_unsup_"+t);if(m){unsup[t]=m;refresh(t).then(()=>{delete unsup[t];try{sessionStorage.removeItem("shifthub_unsup_"+t)}catch(_){}emit(t)},()=>{})}}catch(_){}
+ if(!unsup[t])try{const m=sessionStorage.getItem("shifthub_unsup_"+t);if(m){unsup[t]=m;const clr=()=>{delete unsup[t];try{sessionStorage.removeItem("shifthub_unsup_"+t)}catch(_){}emit(t)};refresh(t).then(clr,e=>{if(!/bad tab|bad kind|unknown tab/i.test(e.message))clr()})}}catch(_){}
  if(unsup[t])return{rows:[],live:true,src:"unsupported",at:0};
  const g=getGood(t),age=g?Date.now()-g.t:1e15;
  if(g&&!o.fresh&&age<FRESH_TTL&&!fail[t])return{rows:g.rows,live:true,src:"live",at:g.t};
@@ -69,6 +73,6 @@ async function load(t,o={}){
  try{const n=await refresh(t);return{rows:n.rows,live:true,src:"live",at:n.t}}
  catch(e){if(unsup[t])return{rows:[],live:true,src:"unsupported",at:0};const g2=getGood(t);if(g2&&st.bad!=="key")return{rows:g2.rows,live:true,src:"cached",at:g2.t};return sample(t)}}
 const cached=t=>!!getGood(t);
-const failed=t=>fail[t]||null,unsupported=t=>unsup[t]||"";
-window.ShiftData={setFocus,load,reset,cached,failed,unsupported,api,live,Key,status:st,hasUrl:()=>!!url()};
+const failed=t=>fail[t]||null,scriptBroken=()=>st.script==="broken",unsupported=t=>unsup[t]||"";
+window.ShiftData={scriptBroken,setFocus,load,reset,cached,failed,unsupported,api,live,Key,status:st,hasUrl:()=>!!url()};
 })();

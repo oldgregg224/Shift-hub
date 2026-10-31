@@ -46,6 +46,7 @@ async function setUpd(tab,rows,live,r){if(tab==="Speed"&&cur==="rushes"&&live&&!
  u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached");TABST[cur]={c:Object.assign({},CUR),upd:txt,cls:stale||r.src==="cached"}}
 const TABST={};
 const keyMsg=()=>{const b=ShiftData.status.bad;if(b==="key")return "Key didn't work, using sample data";
+ if(ShiftData.scriptBroken&&ShiftData.scriptBroken())return "The shared Sheet script deployment is broken (no doGet), showing "+(CUR.src==="cached"?"saved live":"sample")+" data. Ask your GM to paste the full Code.gs and deploy a new version";
  if(CUR.src==="cached")return "Couldn't refresh, showing saved live data";if(b==="net"&&CUR.src==="sample"&&ShiftData.Key.get())return "Couldn't reach live data, using sample data";return ""};
 function keyBanner(){let b=$("#keybanner");const m=keyMsg();if(!b){b=document.createElement("p");b.id="keybanner";b.className="err";b.setAttribute("role","alert");b.style.margin="0 16px 8px";$("#upd").after(b)}
  b.hidden=!m;b.textContent=m?(ShiftData.status.bad==="key"?"Shared key didn't work. Open Settings and re-enter it.":m+". Retrying automatically."):""}
@@ -283,7 +284,7 @@ const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],
 const back=`<button class="btn" data-go="tools" style="align-self:flex-start">${I("chevron-left")}Tools</button>`;
 const OLDK=k=>window.FloorCompat&&FloorCompat.needsUpdate(k)&&ShiftData.live();
 const oldCard=k=>OLDK(k)?`<div class="card stack" role="status"><div class="lbl">Tools need the Apps Script update${chip("warn","This phone only")}</div><div class="meta" style="-webkit-line-clamp:4">The shared Sheet script is an older version, so entries here are saved on this phone only for now. Ask your GM to redeploy the latest Shift Hub Apps Script.</div></div>`:"";
-const store=k=>OLDK(k)?"":window.FloorCompat&&FloorCompat.slow(k)&&ShiftData.live()?`<p class="upd" style="padding:0;text-align:center">Couldn't reach the shared Sheet, showing this phone's entries</p>`:`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
+const store=k=>OLDK(k)?"":window.FloorCompat&&FloorCompat.slow(k)&&ShiftData.live()?`<p class="upd" style="padding:0;text-align:center">${ShiftData.scriptBroken()?"The shared Sheet script deployment is broken (no doGet), showing this phone's entries. New entries stay on this phone.":"Couldn't reach the shared Sheet (request failed), showing this phone's entries"}</p>`:`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
 async function toolSync(){try{const r=await ShiftData.load("Brief");await setUpd("Brief",r.rows,r.live,r);setSrc(r.live,r.src)}catch(e){$("#upd").textContent="";setSrc(ShiftData.live())}}
 const nowT=()=>{const d=new Date();return{date:ymd(d),time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}};
 const pick=(g,opts,cur)=>`<div class="seg" data-group="${g}">${opts.map(o=>`<button type="button" data-pick="${esc(o)}" class="${o===cur?"on":""}">${esc(o[0].toUpperCase()+o.slice(1))}</button>`).join("")}</div>`;
@@ -342,9 +343,9 @@ S.crewnotes=async()=>{const TS=within(toolSync(),2000,null);const rows=(await bl
  await TS;return back+oldCard("crewnotes")+lateNote("crewnotes")+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
  <div class="card stack"><div class="lbl">New note</div><input id="cnn" placeholder="First name" aria-label="First name">
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
- ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
+ ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(x.date)}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v19";
+const APPVER="v20";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -376,7 +377,7 @@ function openSheet(name,cur){closeSheet();const d=document.createElement("div");
  document.body.appendChild(d);
  d.addEventListener("click",async e=>{if(e.target===d||e.target.closest("[data-shclose]")){closeSheet();return}
   const b=e.target.closest("[data-setpos]");if(!b)return;const pos=(b.dataset.setpos||($("#sh-o").value||"")).trim();if(!pos){$("#sh-o").focus();return}
-  const w=shiftNow();try{await Floor.add("positions",{date:w.date,shift:w.shift,position:pos,name:first(name)});closeSheet();show("floor")}catch(err){alert("Could not save: "+err.message)}});
+  const w=shiftNow();try{await Floor.add("positions",{date:w.date,shift:w.shift,position:pos,name:first(name)});closeSheet();show("floor")}catch(err){alert("Could not save: "+err.message+(/no doGet|no doPost/.test(err.message)?". Ask your GM to paste the full Code.gs and deploy a new version.":""))}});
  d.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet();if(e.key==="Enter"&&e.target.id==="sh-o")d.querySelector('[data-setpos=""]').click()});
  (d.querySelector(".btn.primary")||d.querySelector("button")).focus()}
 let cur="home",floorSub="positions",timer=null;
@@ -424,10 +425,11 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  else if(a==="eq"&&v("eqe")){await F.add("equipment",{equipment:v("eqe"),issue:v("eqi")||"",reported_by:first(v("eqr")),status:"open",fixer:"",updated:new Date().toISOString()});show("equipment");return}
  else if(t.dataset.eq){await F.update("equipment",t.dataset.eq,{status:t.dataset.st,fixer:first(v("fx"+t.dataset.eq)),updated:new Date().toISOString()});show("equipment");return}
  else if(a==="cn"&&v("cnn")&&v("cnt")){await F.add("crewnotes",{date:nowT().date,first_name:first(v("cnn")),type:PICK.ntype,note:v("cnt")});show("crewnotes");return}
+ else if(t.dataset.cndel){if(!confirm("Delete this crew note?"))return;await F.remove("crewnotes",t.dataset.cndel);show("crewnotes");return}
  else if(t.dataset.back)await F.update("breaks",t.dataset.back,{back:new Date().toISOString()});
  else if(t.dataset.chk)await F.update("checklist",t.dataset.chk,{done:t.checked});
  else if(t.dataset.fix)await F.update("fixes",t.dataset.fix,{done:t.checked});
- else return;show("floor")}catch(err){alert("Could not save: "+err.message)}});
+ else return;show("floor")}catch(err){alert("Could not save: "+err.message+(/no doGet|no doPost/.test(err.message)?". Ask your GM to paste the full Code.gs and deploy a new version.":""))}});
 app.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".addbar input, #k")){const b=e.target.parentElement.querySelector("[data-act]");if(b)b.click()}});
 $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
 window.addEventListener("shifthub:data",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools"].includes(cur))show(cur)});

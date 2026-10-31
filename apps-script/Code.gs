@@ -4,6 +4,8 @@
  * GET  ?key=K&action=list&kind=positions|breaks|checklist|fixes|handoff -> {rows}
  * GET  ?key=K&action=list&kind=inventory|waste|equipment|crewnotes -> {rows}
  * POST ?key=K&action=add|update|upsert&kind=..(&id=..), body JSON (text/plain) -> Floor_<kind> tabs.
+ * POST ?key=K&action=delete&kind=..&id=..  -> removes that row.
+ * GET  ?action=ping (no key) -> {ok:true,version} to check which Code.gs is deployed.
  * Tools kinds are stored one field per column (lowercase headers) so other bots can read them. */
 const TABS=['Brief','Labor','Events','Speed','SMG','Roster','Comments','Meta'];
 const KINDS=['positions','breaks','checklist','fixes','handoff','inventory','waste','equipment','crewnotes'];
@@ -26,7 +28,8 @@ function tabRows_(name){const s=SpreadsheetApp.getActive().getSheetByName(name);
 function floorRows_(s,kind){const v=s.getDataRange().getValues();const h=v.shift()||[];
   if(COLS[kind])return v.filter(r=>r.some(x=>x!=='')).map(r=>{const o={};h.forEach((k,i)=>o[k]=k==='ts'?iso_(r[i]):(r[i] instanceof Date?iso_(r[i]):r[i]));o.id=String(o.id);return o;});
   return v.map(r=>Object.assign(JSON.parse(r[2]||'{}'),{id:String(r[0]),ts:r[1]}));}
-function doGet(e){try{auth_(e);
+const VERSION='v20';
+function doGet(e){try{if(e.parameter.action==='ping')return out_({ok:true,version:VERSION});auth_(e);
   if(e.parameter.tab){if(TABS.indexOf(e.parameter.tab)<0)throw new Error('bad tab');return out_({rows:tabRows_(e.parameter.tab)});}
   if(e.parameter.action==='list')return out_({rows:floorRows_(floor_(kind_(e)),e.parameter.kind)});
   throw new Error('bad request');}catch(err){return out_({error:err.message});}}
@@ -48,5 +51,8 @@ function doPost(e){try{auth_(e);const kind=kind_(e),s=floor_(kind),body=JSON.par
         const o=Object.assign(JSON.parse(v[i][2]||'{}'),body);
         delete o.id;delete o.ts;s.getRange(i+1,3).setValue(JSON.stringify(o));return out_({ok:true});}}
       return out_({error:'not found'});}
+    if(e.parameter.action==='delete'){const id=String(e.parameter.id||'');if(!id)throw new Error('missing id');
+      const v=s.getDataRange().getValues();let n=0;for(let i=v.length-1;i>=1;i--){if(String(v[i][0])===id){s.deleteRow(i+1);n++;}}
+      return n?out_({ok:true,deleted:n}):out_({error:'not found'});}
     return out_({error:'bad action'});}finally{lock.releaseLock();}
 }catch(err){return out_({error:err.message});}}
