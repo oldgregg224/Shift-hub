@@ -1,0 +1,29 @@
+[
+ {
+  "row_type": "EXAMPLE",
+  "channel": "Drive-thru",
+  "score": "78",
+  "last_week": "81",
+  "coaching_focus": "EXAMPLE: Order accuracy \u2014 read back every order",
+  "low_score_comment_names_removed": "EXAMPLE: Missing sauce, [name] was rude",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "channel": "Front counter",
+  "score": "84",
+  "last_week": "82",
+  "coaching_focus": "",
+  "low_score_comment_names_removed": "EXAMPLE: Lobby tables dirty",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "channel": "Delivery",
+  "score": "72",
+  "last_week": "75",
+  "coaching_focus": "",
+  "low_score_comment_names_removed": "EXAMPLE: Cold fries",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ }
+]

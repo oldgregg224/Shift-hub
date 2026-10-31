@@ -1,0 +1,47 @@
+[
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "hour": "11:00",
+  "cap_hours": "9",
+  "actual_hours": "9.5",
+  "sales": "610",
+  "labor_pct": "22.8",
+  "target_pct": "21.5",
+  "call": "HOLD",
+  "position_to_cut_first": "\u2014",
+  "prep_level_notes": "EXAMPLE: Meat level 3 for lunch",
+  "hold_time_reminders": "EXAMPLE: Fries 7 min hold",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "hour": "14:00",
+  "cap_hours": "6",
+  "actual_hours": "7",
+  "sales": "380",
+  "labor_pct": "26.1",
+  "target_pct": "21.5",
+  "call": "EARLY-OUT",
+  "position_to_cut_first": "Lobby/2nd drink",
+  "prep_level_notes": "EXAMPLE: Drop to level 1",
+  "hold_time_reminders": "EXAMPLE: McNuggets 20 min",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "hour": "17:00",
+  "cap_hours": "10",
+  "actual_hours": "9.5",
+  "sales": "820",
+  "labor_pct": "20.4",
+  "target_pct": "21.5",
+  "call": "HOLD",
+  "position_to_cut_first": "\u2014",
+  "prep_level_notes": "EXAMPLE: Level 4 at 4:45",
+  "hold_time_reminders": "EXAMPLE: Patties 15 min",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ }
+]

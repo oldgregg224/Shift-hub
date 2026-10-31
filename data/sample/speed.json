@@ -1,0 +1,47 @@
+[
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "hour": "11:00",
+  "oepe_sec": "195",
+  "total_time_sec": "250",
+  "last_week_oepe_sec": "180",
+  "last_week_total_sec": "235",
+  "slow_flag": "Y",
+  "order_sec": "55",
+  "cash_sec": "40",
+  "second_window_sec": "100",
+  "pre_rush_positioning_note": "EXAMPLE: Put strongest on 2nd window by 10:50",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "hour": "12:00",
+  "oepe_sec": "170",
+  "total_time_sec": "220",
+  "last_week_oepe_sec": "185",
+  "last_week_total_sec": "240",
+  "slow_flag": "N",
+  "order_sec": "50",
+  "cash_sec": "35",
+  "second_window_sec": "85",
+  "pre_rush_positioning_note": "",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "hour": "13:00",
+  "oepe_sec": "160",
+  "total_time_sec": "210",
+  "last_week_oepe_sec": "165",
+  "last_week_total_sec": "215",
+  "slow_flag": "N",
+  "order_sec": "48",
+  "cash_sec": "32",
+  "second_window_sec": "80",
+  "pre_rush_positioning_note": "",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ }
+]

@@ -1,0 +1,24 @@
+[
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "event": "EXAMPLE: West Orange HS football",
+  "rush_window_start": "20:30",
+  "rush_window_end": "22:00",
+  "prep_notes": "EXAMPLE: Extra fries & drinks",
+  "runner_timing": "Runner on at 20:15",
+  "source_url": "https://example.com/schedule",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-31",
+  "event": "EXAMPLE: Halloween trick-or-treat",
+  "rush_window_start": "17:30",
+  "rush_window_end": "20:00",
+  "prep_notes": "EXAMPLE: Stock Happy Meal toys",
+  "runner_timing": "Runner on at 17:15",
+  "source_url": "https://example.com/events",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ }
+]
