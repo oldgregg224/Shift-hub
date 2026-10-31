@@ -282,8 +282,13 @@ S.whoson=async()=>{const {rows,live,r}=await roster();
 // ---- Who can cover? (read-only suggestions from Roster + Coverage; no contact info, no messaging) ----
 const h1=n=>(Math.round(n*10)/10).toString();
 // Time "22:00", "10:00 PM", "10p", "6a" -> minutes after midnight (NaN if unreadable).
-const tmin=v=>{const m=String(v||"").trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*([ap])?\.?m?\.?$/);if(!m)return NaN;let h=+m[1];const mi=+(m[2]||0);
- if(m[3]){if(h===12)h=0;if(m[3]==="p")h+=12}return h>23||mi>59?NaN:h*60+mi};
+const tmin=v=>{let x=String(v||"").trim().toLowerCase().replace(/\s+/g,"").replace(/\./g,"");if(!x)return NaN;if(x==="noon")return 720;if(x==="midnight")return 0;
+ const m=x.match(/^(\d{1,4})(?::(\d{2}))?(?::\d{2})?(a|p|am|pm)?$/);if(!m)return NaN;let d=m[1],h,mi;
+ if(m[2]!==undefined){h=+d;mi=+m[2]}else if(d.length<=2){h=+d;mi=0}else{h=+d.slice(0,-2);mi=+d.slice(-2)}
+ const ap=m[3]?m[3][0]:"";if(ap){if(h<1||h>12)return NaN;if(h===12)h=0;if(ap==="p")h+=12}return h>23||mi>59?NaN:h*60+mi};
+window.tmin=tmin;
+const hhmm=m=>String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
+const ampm=m=>{const h=Math.floor(m/60);return (h%12||12)+":"+String(m%60).padStart(2,"0")+(h<12?" AM":" PM")};
 const dayN=d=>Math.round(new Date(isoD(d)+"T12:00:00Z")/864e5);
 // Interval in absolute minutes; end at/before start = overnight (ends next day).
 const span=(date,s,e)=>{const a=tmin(s),b=tmin(e);if(isNaN(a)||isNaN(b))return null;const base=dayN(date)*1440;return [base+a,base+b+(b<=a?1440:0)]};
@@ -336,11 +341,11 @@ const nhrs=v=>{const s=String(v??"").trim();if(!s)return null;const x=parseFloat
 const LATE_ST=["WINDOW","GRILL REGULAR MENU"];
 // target: {role (or legacy position), station?, min?, date, start, end, out?}.
 // Hours basis = higher of so-far / scheduled that are present; projected = basis + shift; allowed if <= cap.
-function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!iv)return{error:"Enter a start and end time"};const len=(iv[1]-iv[0])/60;
+function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!iv)return{error:"Enter a start and end time (e.g. 11a, 2:30p, 1400)"};const len=(iv[1]-iv[0])/60;
  const role=String(t.role||t.position||"").trim().toLowerCase(),stn=String(t.station||"").trim().toUpperCase(),min=+t.min||1,out=t.out?pname(t.out):null;
  const rows=crew.filter(c=>!/^(HEADER|NOTE)$/i.test(String(c.row_type||"").trim())&&String(c.first_name||"").trim());
  const dup={};rows.forEach(c=>{const f=pname(c.first_name).f;dup[f]=(dup[f]||0)+1});
- const rs=roster.map(r=>Object.assign({sp:span(r.date,r.start,r.end),pn:pname(r.first_name)},r)).filter(r=>r.sp);
+ const rs=roster.map(r=>Object.assign({sp:span(r.date,r.start,r.end),pn:pname(r.first_name)},r)).filter(r=>r.sp&&r.sp[1]>iv[0]-1440&&r.sp[0]<iv[1]+1440); // only the target day and adjacent days
  const late=(iv[1]-Math.floor(iv[0]/1440)*1440)>1320;
  const ok=[],no=[],seen=new Set();
  rows.forEach(c=>{const pn=pname(c.first_name),key=pn.f+" "+pn.i;if(seen.has(key))return;seen.add(key);
@@ -354,10 +359,11 @@ function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!i
   if(!hasRole)why.push(role?"different role":"no role");if(stn&&(lvl===null||(lvl>0&&lvl<min)))why.push(lvl===null?"no "+stn+" level":stn+" level "+lvl+" < "+min);
   if(ov.length)why.push("overlap");if(proj>cap)why.push("over "+cap);
   let warn=[];if(!why.length){warn=restWarn(mine,iv);const rm=restWarn(maybe,iv);
-   if(ovm.length||rm.length||outM===2)warn.push("name match uncertain"+(outM===2?" (called-out?)":ovm.length?" (possible overlap)":" (possible short rest)"));warn=warn.concat(availWarn(c.availability_notes,iv))}
+   if(ovm.length||rm.length||outM===2)warn.push("name match uncertain"+(outM===2?" (called-out?)":ovm.length?" (possible overlap)":" (possible short rest)"));}
+  warn=warn.concat(availWarn(c.availability_notes,iv));
   const lateLvl=Math.max(0,...LATE_ST.map(s=>sk.st[s]||0));
   const o={name:dname(c.first_name),role:sk.role||sk.old.join(", "),st:sk.st,lvl,notes:c.availability_notes||"",so,sch,base,basis,proj,ov:ov.concat(ovm),why,warn,lateLvl};(why.length?no:ok).push(o)});
- ok.sort((a,b)=>(a.warn.length>0)-(b.warn.length>0)||(late&&!a.warn.length&&!b.warn.length?b.lateLvl-a.lateLvl:0)||a.proj-b.proj||a.name.localeCompare(b.name));return{len,ok,no,iv,late}}
+ ok.sort((a,b)=>(a.warn.length>0)-(b.warn.length>0)||(late&&!a.warn.length&&!b.warn.length?b.lateLvl-a.lateLvl:0)||a.proj-b.proj||a.name.localeCompare(b.name));const counts={};no.forEach(o=>o.why.forEach(w=>{const k=/level/.test(w)?"station level":w;counts[k]=(counts[k]||0)+1}));return{len,ok,no,iv,late,counts}}
 window.covRank=covRank;
 let COV={sel:"",role:"",station:"",min:"1",date:"",start:"",end:"",ran:false};
 const SEL='style="width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line,#d5dbe3);border-radius:12px;background:var(--surface,#fff);color:var(--ink,#111);font:inherit;font-size:16px;margin-top:2px"';
@@ -375,7 +381,7 @@ S.cover=async()=>{const R=within(roster(),2500,()=>({rows:[],live:false,r:{src:"
  const form=`<div class="card stack"><div class="lbl">Shift to cover</div>
  <select id="cvsel" aria-label="Shift from roster" ${SEL}>${o_("manual","Enter a role and time…",sel==="manual")}${opts.map(([i,x])=>o_(i,`${dname(x.first_name)} · ${x.position} · ${x.date===d0?"Today":"Tomorrow"} ${clock(x.start,1)}–${clock(x.end,1)}`,String(i)===sel)).join("")}</select>
  <div id="cvman" class="stack" style="gap:8px${sel==="manual"?"":";display:none"}"><label class="meta" style="margin:0;display:block;overflow:visible">Role<select id="cvrole" aria-label="Role" ${SEL}>${o_("","Choose a role…",!COV.role)}${roles.map(x=>o_(x,x,x===COV.role)).join("")}</select></label>
- <label class="meta" style="margin:0">Date<input id="cvdate" type="date" aria-label="Date" style="width:100%" value="${esc(COV.date||d0)}"></label><div style="display:flex;gap:8px"><label class="meta" style="flex:1;margin:0">Start<input id="cvs" type="time" step="900" aria-label="Start" value="${esc(COV.start||defS)}" style="width:100%"></label><label class="meta" style="flex:1;margin:0">End<input id="cve" type="time" step="900" aria-label="End" value="${esc(COV.end||defE)}" style="width:100%"></label></div></div>
+ <label class="meta" style="margin:0">Date<input id="cvdate" type="date" aria-label="Date" style="width:100%" value="${esc(COV.date||d0)}"></label><div style="display:flex;gap:8px"><label class="meta" style="flex:1;margin:0">Start<input id="cvs" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="e.g. 11a, 2:30p, 1400" aria-label="Start time" data-tm value="${esc(COV.start||ampm(tmin(defS)))}" style="width:100%"><small class="tmok" data-for="cvs"></small></label><label class="meta" style="flex:1;margin:0">End<input id="cve" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="e.g. 11a, 2:30p, 1400" aria-label="End time" data-tm value="${esc(COV.end||ampm(tmin(defE)))}" style="width:100%"><small class="tmok" data-for="cve"></small></label></div></div>
  <div style="display:flex;gap:8px"><label class="meta" style="flex:2;margin:0;display:block;overflow:visible">Station (optional)<select id="cvst" aria-label="Station" ${SEL}>${o_("","Any station",!COV.station)}${sts.map(x=>o_(x,x[0]+x.slice(1).toLowerCase(),x===COV.station)).join("")}</select></label>
  <label class="meta" style="flex:1;margin:0;display:block;overflow:visible">Min level<select id="cvmin" aria-label="Minimum station level" ${SEL}>${[1,2,3,4,5].map(n=>o_(n,n===1?"Any":n+"+",String(n)===String(COV.min))).join("")}</select></label></div>
  <button class="btn primary block" type="button" data-act="cover">Find cover</button></div>`;
@@ -393,7 +399,7 @@ S.cover=async()=>{const R=within(roster(),2500,()=>({rows:[],live:false,r:{src:"
   ${o.warn&&o.warn.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0">${o.warn.map(w=>chip("warn",w)).join("")}</div>`:""}${o.notes?`<div class="meta" style="margin:2px 0 0">Availability: ${esc(o.notes)}</div>`:""}
   ${o.why.length?`<div class="meta" style="margin:2px 0 0">Excluded: ${o.why.map(w=>w==="overlap"?"overlap ("+o.ov.map(r=>esc(r.position||"shift")+" "+clock(r.start,1)+"–"+clock(r.end,1)+(r.date!==t.date?" "+esc(r.date):"")).join(", ")+")":esc(w)).join(" · ")}</div>`:""}</div>`;
  return head+form+sum+`<div class="sec">Can cover (${res.ok.length})</div>`+(res.ok.length?`<div class="list">${res.ok.map(card).join("")}</div>`:empty("No one fits this shift"))+
-  (res.no.length?`<details class="card"><summary class="row"><span class="v txt">Not suggested (${res.no.length})</span>${I("chevron-down","cv")}</summary><div class="list">${res.no.map(card).join("")}</div></details>`:"")};
+  (res.no.length?`<details class="card"><summary class="row"><span class="v txt">Not suggested (${res.no.length})<small>${Object.entries(res.counts).map(([k,n])=>esc(k)+" "+n).join(" · ")}</small></span>${I("chevron-down","cv")}</summary><div class="list">${res.no.map(card).join("")}</div></details>`:"")};
 
 // ---- Tools ----
 const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],["inventory","Inventory","package","Counts, low stock, order list"],["waste","Waste log","trash","Quick log, daily totals"],["equipment","Equipment","wrench","Issues and fixes"],["crewnotes","Crew notes","notebook","Training, praise, call-outs"],["cover","Who can cover?","users","Suggest crew for an open shift"]];
@@ -474,7 +480,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v28";
+const APPVER="v29";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -600,7 +606,8 @@ $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
 setInterval(()=>{if(DEFER&&DEFER===cur&&!editing()&&!document.hidden){DEFER="";show(cur)}},4000);
 window.addEventListener("shifthub:floorsync",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["floor","inventory","waste","equipment","crewnotes"].includes(cur))show(cur)});
 window.addEventListener("shifthub:data",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)});
-app.addEventListener("change",e=>{if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});
+app.addEventListener("input",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
+app.addEventListener("change",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const m=tmin(e.target.value);if(!isNaN(m))e.target.value=ampm(m)}if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});
 setSrc(false);show("home");
 if(window.caches)caches.keys().then(ks=>ks.filter(k=>k.startsWith("shifthub-")&&k!=="shifthub-"+APPVER).forEach(k=>caches.delete(k))).catch(()=>{});
 if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.controller;
