@@ -288,6 +288,36 @@ const dayN=d=>Math.round(new Date(isoD(d)+"T12:00:00Z")/864e5);
 const span=(date,s,e)=>{const a=tmin(s),b=tmin(e);if(isNaN(a)||isNaN(b))return null;const base=dayN(date)*1440;return [base+a,base+b+(b<=a?1440:0)]};
 const hrs=v=>{const x=parseFloat(String(v??"").replace(/[^\d.\-]/g,""));return isNaN(x)?0:x};
 const nkey=s=>first(s).toLowerCase();
+// Availability note parsing (cautions only; never excludes).
+const DAYS=["sun","mon","tue","wed","thu","fri","sat"],DFULL=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const DRE="(sun|mon|tue|wed|thu|fri|sat)[a-z]*\\.?";
+const ntime=x=>{x=String(x).trim().toLowerCase();if(/^noon|^midday/.test(x))return 720;if(/^midnight/.test(x))return 1440;const m=x.match(/^(\d{1,2})(?::(\d{2}))?\s*(a|p)?/);if(!m)return NaN;let h=+m[1];if(m[3]){if(h===12)h=0;if(m[3]==="p")h+=12}else if(h>=1&&h<=6)h+=12;return h*60+(+(m[2]||0))};
+const fmtM=m=>{m%=1440;const h=Math.floor(m/60),mi=m%60;return (h%12||12)+(mi?":"+String(mi).padStart(2,"0"):"")+(h<12?" AM":" PM")};
+function availWarn(notes,iv){const n=String(notes||"").toLowerCase();if(!n.trim())return[];const out=[];const st=iv[0]%1440,en=st+(iv[1]-iv[0]),wd=(Math.floor(iv[0]/1440)+3)%7; /* dayN() rounds noon-UTC up, so epoch day index is +1 */
+ const T="(noon|midday|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:[ap]\\.?m?\\.?)?)";let m;
+ if((m=n.match(new RegExp("(?:after|from|not before|starting(?: at)?)\\s+"+T)))){const t=ntime(m[1]);if(!isNaN(t)&&st<t)out.push("Note: after "+fmtM(t))}
+ if((m=n.match(new RegExp("(?:before|until|till|by|not after)\\s+"+T)))){const t=ntime(m[1]);if(!isNaN(t)&&en>t)out.push("Note: until "+fmtM(t))}
+ if(/no\s+(early\s+)?mornings?|not\s+mornings?|no\s+opens?/.test(n)&&st<720)out.push("Note: no mornings");
+ if(/no\s+(late\s+)?(nights?|evenings?|closes?|closing|overnights?)|not\s+(nights?|evenings?)/.test(n)&&(en>1020||iv[1]-iv[0]<0))out.push("Note: no nights");
+ if(/mornings?\s+only|only\s+mornings?/.test(n)&&en>720)out.push("Note: mornings only");
+ if(/(evenings?|nights?)\s+only|only\s+(evenings?|nights?)/.test(n)&&st<960)out.push("Note: evenings only");
+ if(/weekends?\s+only|only\s+weekends?/.test(n)&&wd%6!==0)out.push("Note: weekends only");
+ if(/weekdays?\s+only|only\s+weekdays?|no\s+weekends?/.test(n)&&wd%6===0)out.push("Note: no weekends");
+ // negated days: "no Sundays", "not Mon", "off Tue", "Tue off"
+ const neg=new Set();let rest=n.replace(new RegExp("(?:no|not|never|off|except|can'?t(?: work)?)\\s+((?:"+DRE+"(?:\\s*(?:,|/|&|and|or)\\s*)?)+)","g"),(_,g)=>{(g.match(new RegExp(DRE,"g"))||[]).forEach(d=>neg.add(DAYS.indexOf(d.slice(0,3))));return " "}).replace(new RegExp(DRE+"\\s+off","g"),d=>{neg.add(DAYS.indexOf(d.slice(0,3)));return " "});
+ if(neg.has(wd))out.push("Note: not "+DFULL[wd]);
+ // positive day list/ranges, e.g. "Mon–Fri", "Tue, Thu, Sat only"
+ const pos=new Set();rest=rest.replace(new RegExp(DRE+"\\s*(?:-|–|—|to|through|thru)\\s*"+DRE,"g"),(_,a,b)=>{let i=DAYS.indexOf(a),j=DAYS.indexOf(b);for(let k=0;k<7;k++){pos.add(i);if(i===j)break;i=(i+1)%7}return " "});
+ (rest.match(new RegExp("\\b"+DRE,"g"))||[]).forEach(d=>pos.add(DAYS.indexOf(d.slice(0,3))));
+ if(pos.size&&!pos.has(wd)&&!neg.has(wd))out.push("Note: not "+DFULL[wd]);
+ return out}
+window.availWarn=availWarn;
+// Rest check vs other Roster shifts: back-to-back (gap 0) or under 8 h rest before/after.
+function restWarn(sh,iv){const out=[];let a=iv[0],b=iv[1],chain=false;const ss=sh.slice().sort((x,y)=>x.sp[0]-y.sp[0]);let grew=true;
+ while(grew){grew=false;ss.forEach(r=>{if(r.sp[1]===a){a=r.sp[0];chain=grew=true}else if(r.sp[0]===b){b=r.sp[1];chain=grew=true}})}
+ if(chain)out.push("back-to-back, "+h1((b-a)/60)+" h day");
+ let gb=Infinity,ga=Infinity;ss.forEach(r=>{if(r.sp[1]<a)gb=Math.min(gb,a-r.sp[1]);if(r.sp[0]>b)ga=Math.min(ga,r.sp[0]-b)});const g=Math.min(gb,ga);
+ if(g<480)out.push("only "+h1(g/60)+" h rest "+(gb<=ga?"before":"after"));return out}
 // target: {position,date,start,end,out?}. Projected = max(week_hours_so_far, scheduled_week_hours) + shift length; allowed if <= 40.
 function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!iv)return{error:"Enter a start and end time"};const len=(iv[1]-iv[0])/60,pos=String(t.position||"").trim().toLowerCase(),out=nkey(t.out||"");
  const busy={};roster.forEach(r=>{const sp=span(r.date,r.start,r.end);if(sp)(busy[nkey(r.first_name)]=busy[nkey(r.first_name)]||[]).push(Object.assign({sp},r))});
@@ -297,8 +327,9 @@ function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!i
   const so=hrs(c.week_hours_so_far),sch=hrs(c.scheduled_week_hours),base=Math.max(so,sch),proj=Math.round((base+len)*100)/100;
   const ov=(busy[k]||[]).filter(r=>r.sp[0]<iv[1]&&iv[0]<r.sp[1]);const why=[];
   if(!skills.includes(pos))why.push("no skill");if(ov.length)why.push("overlap");if(proj>cap)why.push("over "+cap);
-  const o={name:first(c.first_name),skills:c.positions_skills||"",notes:c.availability_notes||"",so,sch,base,basis:sch>so?"scheduled":"so far",proj,ov,why};(why.length?no:ok).push(o)});
- ok.sort((a,b)=>a.proj-b.proj||a.name.localeCompare(b.name));return{len,ok,no,iv}}
+  const warn=why.length?[]:restWarn(busy[k]||[],iv).concat(availWarn(c.availability_notes,iv));
+  const o={name:first(c.first_name),skills:c.positions_skills||"",notes:c.availability_notes||"",so,sch,base,basis:sch>so?"scheduled":"so far",proj,ov,why,warn};(why.length?no:ok).push(o)});
+ ok.sort((a,b)=>(a.warn.length>0)-(b.warn.length>0)||a.proj-b.proj||a.name.localeCompare(b.name));return{len,ok,no,iv}}
 window.covRank=covRank;
 let COV={sel:"",pos:"",date:"",start:"",end:"",ran:false};
 const h1=n=>(Math.round(n*10)/10).toString();
@@ -308,19 +339,20 @@ S.cover=async()=>{const R=within(roster(),2500,()=>({rows:[],live:false,r:{src:"
  const crew=(cr.rows||[]).filter(x=>String(x.row_type||"").toUpperCase()!=="HEADER");
  const op=shiftNow().op,d0=ymd(op),d1=(()=>{const d=new Date(op);d.setDate(d.getDate()+1);return ymd(d)})();
  const opts=rows.map((x,i)=>[i,x]).filter(([i,x])=>(x.date===d0||x.date===d1)&&x.position&&String(x.role).toLowerCase()!=="manager");
+ const nq=(()=>{const d=new Date();return Math.ceil((d.getHours()*60+d.getMinutes())/15)*15%1440})(),hm=m=>String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0"),defS=hm(nq),defE=hm((nq+360)%1440);
  const sel=COV.sel===""&&opts.length?String(opts[0][0]):COV.sel;
  const form=`<div class="card stack"><div class="lbl">Shift to cover</div>
- <select id="cvsel" aria-label="Shift from roster"><option value="manual"${sel==="manual"?" selected":""}>Enter a position and time…</option>${opts.map(([i,x])=>`<option value="${i}"${String(i)===sel?" selected":""}>${esc(first(x.first_name))} · ${esc(x.position)} · ${x.date===d0?"Today":"Tomorrow"} ${clock(x.start,1)}–${clock(x.end,1)}</option>`).join("")}</select>
- <div id="cvman" class="stack" style="gap:8px${sel==="manual"?"":";display:none"}"><input id="cvpos" placeholder="Position (e.g. Grill)" aria-label="Position" value="${esc(COV.pos)}">
- <div style="display:flex;gap:8px"><input id="cvdate" type="date" aria-label="Date" value="${esc(COV.date||d0)}"><input id="cvs" type="time" aria-label="Start" value="${esc(COV.start)}"><input id="cve" type="time" aria-label="End" value="${esc(COV.end)}"></div></div>
+ <select id="cvsel" aria-label="Shift from roster" style="width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line,#d5dbe3);border-radius:12px;background:var(--card,#fff);color:inherit;font:inherit;font-size:16px"><option value="manual"${sel==="manual"?" selected":""}>Enter a position and time…</option>${opts.map(([i,x])=>`<option value="${i}"${String(i)===sel?" selected":""}>${esc(first(x.first_name))} · ${esc(x.position)} · ${x.date===d0?"Today":"Tomorrow"} ${clock(x.start,1)}–${clock(x.end,1)}</option>`).join("")}</select>
+ <div id="cvman" class="stack" style="gap:8px${sel==="manual"?"":";display:none"}"><input id="cvpos" list="cvposl" placeholder="Position (e.g. Grill)" aria-label="Position" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="${esc(COV.pos)}"><datalist id="cvposl">${[...new Set(crew.flatMap(c=>String(c.positions_skills||"").split(",").map(x=>x.trim()).filter(Boolean)))].map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
+ <label class="meta" style="margin:0">Date<input id="cvdate" type="date" aria-label="Date" style="width:100%" value="${esc(COV.date||d0)}"></label><div style="display:flex;gap:8px"><label class="meta" style="flex:1;margin:0">Start<input id="cvs" type="time" step="900" aria-label="Start" value="${esc(COV.start||defS)}" style="width:100%"></label><label class="meta" style="flex:1;margin:0">End<input id="cve" type="time" step="900" aria-label="End" value="${esc(COV.end||defE)}" style="width:100%"></label></div></div>
  <button class="btn primary block" type="button" data-act="cover">Find cover</button></div>`;
  if(!COV.ran)return head+form+(crew.length?"":`<p class="upd" style="padding:0;text-align:center">No Coverage rows in the Sheet yet</p>`);
  let t;if(sel!=="manual"&&rows[+sel]){const x=rows[+sel];t={position:x.position,date:x.date,start:x.start,end:x.end,out:x.first_name}}else t={position:COV.pos,date:COV.date||d0,start:COV.start,end:COV.end};
  if(!String(t.position).trim())return head+form+`<p class="meta">Enter a position.</p>`;
  const res=covRank(rows,crew,t);if(res.error)return head+form+`<p class="meta">${esc(res.error)}.</p>`;
- const sum=`<div class="card"><div class="lbl">${esc(t.position)} · ${esc(t.date)} ${clock(t.start,1)}–${clock(t.end,1)}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:5">${t.out?"Called out: <b>"+esc(first(t.out))+"</b> (not suggested). ":""}Projected = the higher of hours so far and scheduled hours this week, plus this shift. Must stay at or under 40 h.</div></div>`;
+ const sum=`<div class="card"><div class="lbl">${esc(t.position)} · ${esc(t.date)} ${clock(t.start,1)}–${clock(t.end,1)}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:5">${t.out?"Called out: <b>"+esc(first(t.out))+"</b> (not suggested). ":""}Projected = the higher of hours so far and scheduled hours this week, plus this shift. Must stay at or under 40 h. People with a caution (short rest, back-to-back, or availability note) are listed last.</div></div>`;
  const card=o=>`<div class="row" style="display:block;padding:10px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(o.name)}</b>${chip(o.proj>40?"bad":o.proj>=36?"warn":"good",h1(o.proj)+" h projected")}</div>
-  <div class="meta" style="margin:2px 0 0">So far ${h1(o.so)} h · scheduled ${h1(o.sch)} h · used ${o.basis} (${h1(o.base)} h) + ${h1(res.len)} h</div>${o.notes?`<div class="meta" style="margin:2px 0 0">${esc(o.notes)}</div>`:""}
+  <div class="meta" style="margin:2px 0 0">So far ${h1(o.so)} h · scheduled ${h1(o.sch)} h · used ${o.basis} (${h1(o.base)} h) + ${h1(res.len)} h</div>${o.warn&&o.warn.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0">${o.warn.map(w=>chip("warn",w)).join("")}</div>`:""}${o.notes?`<div class="meta" style="margin:2px 0 0">Availability: ${esc(o.notes)}</div>`:""}
   ${o.why.length?`<div class="meta" style="margin:2px 0 0">Excluded: ${o.why.map(w=>w==="overlap"?"overlap ("+o.ov.map(r=>esc(r.position||"shift")+" "+clock(r.start,1)+"–"+clock(r.end,1)+(r.date!==t.date?" "+esc(r.date):"")).join(", ")+")":esc(w)).join(" · ")}</div>`:""}</div>`;
  return head+form+sum+`<div class="sec">Can cover (${res.ok.length})</div>`+(res.ok.length?`<div class="list">${res.ok.map(card).join("")}</div>`:empty("No one fits this shift"))+
   (res.no.length?`<details class="card"><summary class="row"><span class="v txt">Not suggested (${res.no.length})</span>${I("chevron-down","cv")}</summary><div class="list">${res.no.map(card).join("")}</div></details>`:"")};
@@ -404,7 +436,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v26";
+const APPVER="v27";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
