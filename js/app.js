@@ -29,13 +29,15 @@ let meta=null,metaAt=0;
 // Last synced time for a tab: Meta.last_updated for that tab, else the rows' own last_updated / updated column.
 const fmtT=d=>d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
 const STALE=90*60000;
+// Per-tab freshness: Events refresh weekly (Mon), SMG/Comments every 4h; others 90 min.
+const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:4.5*36e5};const staleMs=t=>STALE_BY[t]||STALE;
 let CUR={src:"sample",stale:false,tab:""};
 async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-metaAt>60000)){try{const r=await ShiftData.load("Meta");if(r.live){meta=r.rows;metaAt=Date.now()}}catch(e){}}
  const m=(meta||[]).find(x=>x.tab===tab);const r0=(rows||[]).find(x=>x&&(x.last_updated||x.updated))||{};
  const v=(m&&(m.last_updated||m.updated))||r0.last_updated||r0.updated||"";if(!v)return null;const d=new Date(v);return{v,d:isNaN(d)?null:d}}
-async function setUpd(tab,rows,live,r){r=r||{src:live?"live":"sample"};const u=$("#upd");
+async function setUpd(tab,rows,live,r){if(tab==="Speed"&&cur==="rushes"&&live&&!(rows&&rows.length))return;r=r||{src:live?"live":"sample"};const u=$("#upd");
  if(!live){CUR={src:"sample",stale:false,tab};u.textContent="Sample data · not live";u.classList.remove("stale");return}
- const t=await syncTime(tab,rows);const stale=!!(t&&t.d&&Date.now()-t.d>STALE);CUR={src:r.src,stale,tab,at:r.at};
+ const t=await syncTime(tab,rows);const stale=!!(t&&t.d&&Date.now()-t.d>staleMs(tab));CUR={src:r.src,stale,tab,at:r.at};
  let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(stale?" · stale":""):"Last synced: not in Sheet";
  if(r.src==="cached"&&r.at)txt+=" · saved copy from "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached");TABST[cur]={c:Object.assign({},CUR),upd:txt,cls:stale||r.src==="cached"}}
@@ -333,7 +335,7 @@ S.crewnotes=async()=>{await toolSync();const rows=(await Floor.list("crewnotes")
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v16";
+const APPVER="v17";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
