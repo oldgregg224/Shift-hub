@@ -52,10 +52,28 @@ const keyAlert=()=>ShiftData.status.bad==="key"||(CUR.src==="sample"&&keyMsg())?
 let LIVE=false;
 async function get(tab){const r=await ShiftData.load(tab);LIVE=r.live;CUR.src=r.src;await setUpd(tab,r.rows,r.live,r);setSrc(r.live,r.src);return r.rows}
 // "Now" row: live = latest row; sample = row for the current clock hour, clamped to the sample's range.
-function nowRow(r){if(LIVE)return{x:r[r.length-1],lbl:"Now · "+clock(r[r.length-1].hour)};
- const h=new Date().getHours(),hs=r.map(x=>parseInt(x.hour,10));let i=hs.findIndex(v=>v===h);
- if(i<0)i=h<Math.min(...hs)?hs.indexOf(Math.min(...hs)):hs.reduce((b,v,j)=>v<=h&&v>=hs[b]?j:b,hs.indexOf(Math.min(...hs)));
- const x=r[i],exact=hs[i]===h;return{x,lbl:(exact?"Now · ":"Sample · ")+clock(x.hour)+(exact?" · sample":" (closest hour)")}}
+// ---- Hourly rows (Labor, Speed): tolerate real Sheet shapes ----
+// Column names vary: match by normalized key against aliases. Hours may be "06:00", "6", "6:00 AM", "6a", "14"; ALL/Total rows are day totals.
+const nk=k=>String(k).toLowerCase().replace(/%/g,"pct").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
+function fld(x,al){if(!x)return "";const m={};for(const k in x)m[nk(k)]=x[k];for(const a of al){const v=m[a];if(v!=null&&String(v).trim()!==""&&String(v).trim()!=="—")return v}return ""}
+const num=(x,al)=>n(fld(x,al));
+function hourOf(v){const s=String(v??"").trim().toLowerCase();if(!s)return null;const m=/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(a|p|am|pm)?\b/.exec(s);if(!m){const d=new Date(s);return isNaN(d)||!/\d{1,2}:\d{2}/.test(s)?null:d.getHours()}
+ let h=+m[1];if(m[3]){h=h%12+(m[3][0]==="p"?12:0)}return h>=0&&h<24?h:null}
+const hh=h=>{const ap=h>=12?" PM":" AM";return (h%12||12)+":00"+ap},hs=h=>(h%12||12)+(h>=12?"p":"a");
+const isTot=x=>/^(all|total|day|daily|day total)$/i.test(String(fld(x,["hour","time","hour_start","interval"])).trim())||/total|summary/i.test(String(x.row_type||""));
+// rows -> {hours:[{h,x}] for the latest date (one per hour, last wins), total:x|null}; has(x) says a row carries data.
+function hourly(r,has){r=(r||[]).filter(x=>!/^header$/i.test(String(x.row_type||"")));
+ const dateOf=x=>String(fld(x,["date","business_date","day"])||"");
+ const tots=r.filter(isTot),hr=r.filter(x=>!isTot(x)&&hourOf(fld(x,["hour","time","hour_start","interval"]))!=null);
+ const dates=[...new Set(hr.filter(has).map(dateOf))].sort();const d=dates.pop();
+ const by=new Map();hr.filter(x=>d===undefined||dateOf(x)===d||!dateOf(x)).forEach(x=>{const h=hourOf(fld(x,["hour","time","hour_start","interval"]));const o=by.get(h);if(!o||has(x)||!has(o.x))by.set(h,{h,x})});
+ const hours=[...by.values()].sort((a,b)=>a.h-b.h);
+ const tc=tots.filter(has);const total=(tc.filter(x=>!d||dateOf(x)===d).pop())||tc.pop()||null;return{hours,total,date:d}}
+// NOW = current clock hour if it has data, else the latest hour with data before now, else the latest hour with data.
+function pickNow(H,has){const h=new Date().getHours(),w=H.filter(o=>has(o.x));if(!w.length)return null;
+ const ex=w.find(o=>o.h===h);if(ex)return{o:ex,lbl:"Now · "+hh(ex.h)};const b=w.filter(o=>o.h<h).pop();
+ if(b)return{o:b,lbl:"Latest · "+hh(b.h)};const l=w[w.length-1];return{o:l,lbl:"Latest · "+hh(l.h)}}
+const chipIf=(st,txt)=>st&&st!=="neutral"&&txt&&!/NaN|undefined/.test(txt)?chip(st,txt):"";
 
 async function whoHome(){try{const {rows}=await roster(),now=shiftNow();const sr=rows.filter(x=>x.date===now.date&&x.shift===now.shift);if(!sr.length)return "";
  const m=sr.filter(x=>String(x.role).toLowerCase()==="manager").map(x=>first(x.first_name)).join(", ")||"—",c=sr.length-sr.filter(x=>String(x.role).toLowerCase()==="manager").length;
@@ -72,18 +90,27 @@ async home(){const r=await get("Brief"),b=r[0]||{};
  kpi("Labor",pct(la),isNaN(lp)?"":"target "+pct(lp),ls,(isNaN(la-lp)?"":sgn(la-lp,1)+" · ")+({good:"On target",warn:"Watch",bad:"Over"}[ls]||""),"labor")+
  `<div class="grid">`+
  kpi("Overtime",ot,ot?b.overtime_watch_first_names:"No one close",status(ot,0,"count"),ot?"Watch":"Clear","floor",1)+
- (odNA?kpi("Overdue","n/a","No checklist source",null,null,"floor",1):kpi("Overdue",od,od?b.overdue_checklists:"All checklists done",od?"bad":"good",od?"Late":"Clear","floor",1))+
+ (odNA?"":kpi("Overdue",od,od?b.overdue_checklists:"All checklists done",od?"bad":"good",od?"Late":"Clear","floor",1))+
  kpi("Guest notes",cm,"new comments",null,null,"guest",1)+
  kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+await whoHome()},
 
-async labor(){const r=await get("Labor");if(!r.length)return keyAlert()+empty("No labor data yet");
+async labor(){const r=await get("Labor");
+ const LP=["labor_pct","labor_percent","labor_pct_actual","actual_labor_pct","actual_pct","crew_labor_pct","labor"],TP=["target_pct","labor_target_pct","target","goal_pct","labor_goal_pct","projected_labor_pct","labor_projection_pct"],
+ AH=["actual_hours","labor_hours","worked_hours","actual_hrs","hours_worked","hours"],CH=["cap_hours","scheduled_hours","planned_hours","budget_hours","cap_hrs","sched_hours","projected_hours"],SL=["sales","net_sales","sales_actual","actual_sales"];
+ const has=x=>!isNaN(num(x,LP))||!isNaN(num(x,AH));const {hours,total}=hourly(r,has);
+ if(!hours.some(o=>has(o.x))&&!total)return keyAlert()+empty("No labor data yet");
  const callSt=c=>{c=String(c||"").toUpperCase();return c.includes("EARLY")?"bad":c.includes("HOLD")?"warn":"good"};
- const N=nowRow(r),cur=N.x,cl=n(cur.labor_pct),ct=n(cur.target_pct)||21.5,cs=status(cl,ct,"labor");
- return keyAlert()+`<div class="card"><div class="lbl">${N.lbl}${chip(cs,sgn(cl-ct,1)+" · "+WORD[cs])}</div><div class="hero">${pct(cl)}</div>
- <div class="meta" style="display:flex;align-items:center;gap:8px">target ${pct(ct)} ${cur.call?chip(callSt(cur.call),cur.call):""}</div></div>
- <div class="sec">By hour</div><div class="list">${r.map(x=>{const l=n(x.labor_pct),t=n(x.target_pct)||21.5;
- return `<details><summary class="row"><span class="t">${clock(x.hour,1)}</span><span class="v">${pct(l)}<small>${esc(x.actual_hours)} of ${esc(x.cap_hours)} hrs · ${chip(status(l,t,"labor")).replace(/<[^>]+>/g,"")}</small></span>${x.call?chip(callSt(x.call),x.call):""}${I("chevron-down","cv")}</summary>
- <div class="det">${x.position_to_cut_first&&x.position_to_cut_first!=="—"?`<div><b>Cut first:</b> ${esc(x.position_to_cut_first)}</div>`:""}${x.prep_level_notes?`<div><b>Prep:</b> ${esc(x.prep_level_notes)}</div>`:""}${x.hold_time_reminders?`<div><b>Hold:</b> ${esc(x.hold_time_reminders)}</div>`:""}${x.sales?`<div><b>Sales:</b> ${money(n(x.sales))}</div>`:""}</div></details>`}).join("")}</div>`},
+ const tgt=x=>{const t=num(x,TP);return isNaN(t)?NaN:t};
+ const hrs=x=>{const a=num(x,AH),c=num(x,CH);return isNaN(a)&&isNaN(c)?"":isNaN(c)?esc(+a.toFixed(2))+" hrs":isNaN(a)?"cap "+esc(+c.toFixed(2))+" hrs":esc(+a.toFixed(2))+" of "+esc(+c.toFixed(2))+" hrs"};
+ const card=(lbl,x)=>{const l=num(x,LP),t=tgt(x),s=isNaN(t)?"neutral":status(l,t,"labor"),call=fld(x,["call","labor_call","action"]),hm=hrs(x);
+  return `<div class="card"><div class="lbl">${lbl}${chipIf(s,(isNaN(l-t)?"":sgn(l-t,1)+" · ")+(WORD[s]||""))}</div><div class="hero">${pct(l)}</div>
+  <div class="meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${[isNaN(t)?"":"target "+pct(t),hm].filter(Boolean).join(" · ")} ${call?chip(callSt(call),call):""}</div></div>`};
+ const N=pickNow(hours,has);
+ return keyAlert()+(N?card(N.lbl,N.o.x):"")+(total?card("Day total",total):"")+
+ (hours.length?`<div class="sec">By hour</div><div class="list">${hours.map(({h,x})=>{const l=num(x,LP),t=tgt(x),call=fld(x,["call","labor_call","action"]),st=isNaN(t)?"neutral":status(l,t,"labor"),hm=hrs(x),sa=num(x,SL);
+ const cut=fld(x,["position_to_cut_first","cut_first"]),prep=fld(x,["prep_level_notes","prep_notes","prep"]),hold=fld(x,["hold_time_reminders","hold_notes"]);
+ return `<details><summary class="row"><span class="t">${hs(h)}</span><span class="v">${pct(l)}<small>${[hm,st!=="neutral"?WORD[st]:""].filter(Boolean).join(" · ")||(has(x)?"":"No data yet")}</small></span>${call?chip(callSt(call),call):""}${I("chevron-down","cv")}</summary>
+ <div class="det">${cut?`<div><b>Cut first:</b> ${esc(cut)}</div>`:""}${prep?`<div><b>Prep:</b> ${esc(prep)}</div>`:""}${hold?`<div><b>Hold:</b> ${esc(hold)}</div>`:""}${isNaN(sa)?"":`<div><b>Sales:</b> ${money(sa)}</div>`}${isNaN(t)?"":`<div><b>Target:</b> ${pct(t)}</div>`}</div></details>`}).join("")}</div>`:"")},
 
 async rushes(){const r=await get("Events");const d0=new Date(),today=`${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,"0")}-${String(d0.getDate()).padStart(2,"0")}`;
  const t=r.filter(x=>x.date===today),wk=new Date(d0.getTime()+7*864e5).toISOString().slice(0,10),nx=r.filter(x=>x.date>today&&x.date<=wk).sort((a,b)=>a.date<b.date?-1:1);
@@ -95,15 +122,21 @@ async rushes(){const r=await get("Events");const d0=new Date(),today=`${d0.getFu
  `<div class="sec">Next 7 days</div>`+(nx.length?`<div class="list">${nx.map(x=>`<details><summary class="row">${chip("neutral",day(x.date))}<span class="v txt">${esc(x.event)}<small>${win(x)}</small></span>${I("chevron-down","cv")}</summary>
  <div class="det" style="padding-left:0">${x.prep_notes?`<div><b>Prep:</b> ${esc(x.prep_notes)}</div>`:""}${x.runner_timing?`<div><b>Runner:</b> ${esc(x.runner_timing)}</div>`:""}${src(x)}</div></details>`).join("")}</div>`:empty("Nothing coming up"))},
 
-async speed(){const r=await get("Speed");if(!r.length)return keyAlert()+empty("No speed data yet");
- const st=x=>x.slow_flag==="Y"?"bad":status(n(x.oepe_sec),n(x.last_week_oepe_sec),"oepe");
- const N=nowRow(r),cur=N.x,cd=n(cur.oepe_sec)-n(cur.last_week_oepe_sec);
- const tips=r.filter(x=>x.pre_rush_positioning_note);
- return keyAlert()+`<div class="card"><div class="lbl">${N.lbl}${chip(st(cur),isNaN(cd)?WORD[st(cur)]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(n(cur.oepe_sec))}</div><div class="meta">OEPE · last week ${mmss(n(cur.last_week_oepe_sec))}</div></div>`+
- tips.map(x=>`<div class="tip">${I("lightbulb")}<span>${esc(x.pre_rush_positioning_note)}</span></div>`).join("")+
- `<div class="sec">OEPE by hour</div><div class="list">${r.map(x=>{const d=n(x.oepe_sec)-n(x.last_week_oepe_sec),s=st(x),o=n(x.order_sec)||0,c=n(x.cash_sec)||0,w=n(x.second_window_sec)||0;
- return `<details><summary class="row"><span class="t">${clock(x.hour,1)}</span><span class="v">${mmss(n(x.oepe_sec))}<small>LW ${mmss(n(x.last_week_oepe_sec))} · total ${mmss(n(x.total_time_sec))}</small></span>${chip(s,(isNaN(d)?"":sgn(d)+"s ")+(s==="bad"?"Slow":s==="warn"?"Watch":""))}${I("chevron-down","cv")}</summary>
- <div class="det"><div><b>Total:</b> ${mmss(n(x.total_time_sec))} (LW ${mmss(n(x.last_week_total_sec))})</div>${o+c+w?`<div class="bar"><i style="flex:${o};background:var(--accent)"></i><i style="flex:${c};background:var(--ink-3)"></i><i style="flex:${w};background:var(--warn)"></i></div><div>Order ${o}s · Cash ${c}s · 2nd window ${w}s</div>`:""}</div></details>`}).join("")}</div>`},
+async speed(){const r=await get("Speed");
+ const OE=["oepe_sec","oepe","oepe_seconds","avg_oepe_sec","oepe_avg_sec"],LW=["last_week_oepe_sec","lw_oepe_sec","last_week_oepe","oepe_last_week_sec"],TT=["total_time_sec","total_sec","total_time","avg_total_sec"],LT=["last_week_total_sec","lw_total_sec"],
+ OS=["order_sec","order_time_sec"],CS=["cash_sec","cash_time_sec"],WS=["second_window_sec","present_sec","window_sec","2nd_window_sec"];
+ const has=x=>!isNaN(num(x,OE))||!isNaN(num(x,TT));const hasAny=x=>has(x)||!isNaN(num(x,LW));
+ const {hours,total}=hourly(r,hasAny);if(!hours.length&&!total)return keyAlert()+empty("No speed data yet");
+ const st=x=>String(fld(x,["slow_flag","slow"])).toUpperCase()==="Y"&&has(x)?"bad":isNaN(num(x,LW))?"neutral":status(num(x,OE),num(x,LW),"oepe");
+ const N=pickNow(hours,has);const tips=r.filter(x=>fld(x,["pre_rush_positioning_note","positioning_note"]));
+ const lwOnly=!hours.some(o=>has(o.x));
+ const head=N?(()=>{const x=N.o.x,cd=num(x,OE)-num(x,LW),s=st(x);return `<div class="card"><div class="lbl">${N.lbl}${chipIf(s,isNaN(cd)?WORD[s]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(num(x,OE))}</div><div class="meta">OEPE${isNaN(num(x,LW))?"":" · last week "+mmss(num(x,LW))}</div></div>`})()
+  :`<div class="card"><div class="lbl">No times yet today</div><div class="meta">${lwOnly?"Showing last week's times by hour below.":"Waiting for the next sync."}</div></div>`;
+ return keyAlert()+head+tips.map(x=>`<div class="tip">${I("lightbulb")}<span>${esc(fld(x,["pre_rush_positioning_note","positioning_note"]))}</span></div>`).join("")+
+ `<div class="sec">OEPE by hour</div><div class="list">${hours.map(({h,x})=>{const oe=num(x,OE),lw=num(x,LW),d=oe-lw,s=st(x),o=num(x,OS)||0,c=num(x,CS)||0,w=num(x,WS)||0;
+ const tag=(isNaN(d)?"":sgn(d)+"s ")+(s==="bad"?"Slow":s==="warn"?"Watch":"");
+ return `<details><summary class="row"><span class="t">${hs(h)}</span><span class="v">${mmss(oe)}<small>${[isNaN(lw)?"":"LW "+mmss(lw),isNaN(num(x,TT))?"":"total "+mmss(num(x,TT))].filter(Boolean).join(" · ")}</small></span>${tag.trim()?chip(s,tag):""}${I("chevron-down","cv")}</summary>
+ <div class="det">${isNaN(num(x,TT))&&isNaN(num(x,LT))?"":`<div><b>Total:</b> ${mmss(num(x,TT))}${isNaN(num(x,LT))?"":" (LW "+mmss(num(x,LT))+")"}</div>`}${o+c+w?`<div class="bar"><i style="flex:${o};background:var(--accent)"></i><i style="flex:${c};background:var(--ink-3)"></i><i style="flex:${w};background:var(--warn)"></i></div><div>Order ${o}s · Cash ${c}s · 2nd window ${w}s</div>`:""}</div></details>`}).join("")}</div>`},
 
 async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return keyAlert()+empty("No guest scores yet")+cmt;const f=r.find(x=>x.coaching_focus);
  const cm=r.filter(x=>x.low_score_comment_names_removed);
@@ -111,8 +144,7 @@ async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return 
  r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div><div class="meta">last week ${isNaN(l)?"—":l}</div></div>`}).join("")+
  (cm.length?`<details class="card more"><summary>Survey low-score comments: ${cm.length}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")+cmt},
 
-async floor(){$("#upd").textContent="";const F=window.Floor;const sub=floorSub;
- setSrc(ShiftData.live());
+async floor(){await toolSync();const F=window.Floor;const sub=floorSub;
  const tabs=[["positions","Positions"],["breaks","Breaks"],["checklist","Checklist"],["fixes","Fixes"],["handoff","Notes"]];
  const seg=`<div class="seg" role="tablist">${tabs.map(([k,l])=>`<button type="button" role="tab" data-sub="${k==="handoff"?"notes":k}" class="${k===sub?"on":""}" aria-selected="${k===sub}">${l}</button>`).join("")}</div>`;
  const rows=await F.list(sub);const store=`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
@@ -190,14 +222,17 @@ S.whoson=async()=>{const {rows,live,r}=await roster();CUR.src=r.src;await setUpd
 // ---- Tools ----
 const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],["inventory","Inventory","package","Counts, low stock, order list"],["waste","Waste log","trash","Quick log, daily totals"],["equipment","Equipment","wrench","Issues and fixes"],["crewnotes","Crew notes","notebook","Training, praise, call-outs"]];
 const back=`<button class="btn" data-go="tools" style="align-self:flex-start">${I("chevron-left")}Tools</button>`;
-const store=()=>`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
+const OLDK=k=>window.FloorCompat&&FloorCompat.needsUpdate(k)&&ShiftData.live();
+const oldCard=k=>OLDK(k)?`<div class="card stack" role="status"><div class="lbl">Tools need the Apps Script update${chip("warn","This phone only")}</div><div class="meta" style="-webkit-line-clamp:4">The shared Sheet script is an older version, so entries here are saved on this phone only for now. Ask your GM to redeploy the latest Shift Hub Apps Script.</div></div>`:"";
+const store=k=>OLDK(k)?"":`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
+async function toolSync(){try{const r=await ShiftData.load("Brief");await setUpd("Brief",r.rows,r.live,r);setSrc(r.live,r.src)}catch(e){$("#upd").textContent="";setSrc(ShiftData.live())}}
 const nowT=()=>{const d=new Date();return{date:ymd(d),time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}};
 const pick=(g,opts,cur)=>`<div class="seg" data-group="${g}">${opts.map(o=>`<button type="button" data-pick="${esc(o)}" class="${o===cur?"on":""}">${esc(o[0].toUpperCase()+o.slice(1))}</button>`).join("")}</div>`;
 const PICK={reason:"expired",ntype:"training"};
-S.tools=async()=>{try{const r=await ShiftData.load("Brief");await setUpd("Brief",r.rows,r.live,r);setSrc(r.live,r.src)}catch(e){$("#upd").textContent=""}
+S.tools=async()=>{await toolSync();
  return TOOLS.map(([k,l,ic,m])=>`<button class="card tool" type="button" data-go="${k}">${I(ic)}<span><b>${l}</b><span class="meta">${m}</span></span>${I("chevron-right","cv")}</button>`).join("")};
 const SEED=[["Buns","cases",12],["Patties","cases",10],["Fries","cases",15],["Nuggets","cases",8],["Cups","sleeves",20],["Lids","sleeves",20],["Sauce","boxes",6]];
-S.inventory=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=(await Floor.list("inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
+S.inventory=async()=>{await toolSync();const rows=(await Floor.list("inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
  const by={};SEED.forEach(([i,u,p])=>by[i.toLowerCase()]={item:i,unit:u,par:p,hist:[]});
  rows.forEach(x=>{const k=String(x.item).trim().toLowerCase();if(!k)return;const o=by[k]||(by[k]={item:x.item,unit:x.unit,par:"",hist:[]});if(x.unit)o.unit=x.unit;if(x.par!==""&&x.par!=null)o.par=n(x.par);if(x.on_hand!==""&&x.on_hand!=null)o.hist.push({q:n(x.on_hand),t:new Date(x.ts)})});
  const items=Object.values(by);
@@ -209,51 +244,55 @@ S.inventory=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const ro
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span><b>Used</b> ${used} vs <b>expected</b> ${exp.toFixed(1)} ${esc(o.unit)}</span>${chip(st,st==="good"?"On track":diff>0?"Over":"Under")}</div>`};
  const st=o=>{const q=o.hist.length?o.hist[o.hist.length-1].q:NaN;if(isNaN(q)||!o.par)return["neutral","Not counted"];return q<o.par*.5?["bad","Low"]:q<o.par?["warn","Below par"]:["good","OK"]};
  const order=items.filter(o=>o.hist.length&&o.par&&o.par-o.hist[o.hist.length-1].q>0);
- return back+(order.length?`<div class="card"><div class="lbl">Order list${chip("warn",order.length+(order.length>1?" items":" item"))}</div>${order.map(o=>`<div class="row"><span class="v txt">${esc(o.item)}</span><b>${esc(qu(o.par-o.hist[o.hist.length-1].q,o.unit))}</b></div>`).join("")}</div>`:"")+
+ return back+oldCard("inventory")+(order.length?`<div class="card"><div class="lbl">Order list${chip("warn",order.length+(order.length>1?" items":" item"))}</div>${order.map(o=>`<div class="row"><span class="v txt">${esc(o.item)}</span><b>${esc(qu(o.par-o.hist[o.hist.length-1].q,o.unit))}</b></div>`).join("")}</div>`:"")+
  `<div class="sec">Counts</div><div class="list">${items.map((o,i)=>{const q=o.hist.length?o.hist[o.hist.length-1].q:"";const [s,w]=st(o);
   return `<details><summary class="row"><span class="v txt">${esc(o.item)}<small>${q===""?"—":q} of ${esc(o.par?qu(o.par,o.unit):"— "+o.unit)}${o.hist.length?" · "+o.hist[o.hist.length-1].t.toLocaleDateString("en-US",{weekday:"short"}):""}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
   <div class="det" style="padding-left:0"><div class="stack" style="gap:8px">${usage(o)}<div style="display:flex;gap:8px"><input id="ioh${i}" type="number" inputmode="decimal" placeholder="On hand" aria-label="On hand"><input id="ipar${i}" type="number" inputmode="decimal" placeholder="Par ${o.par||""}" aria-label="Par"></div>
   <button class="btn primary block" data-act="inv" data-i="${i}" data-item="${esc(o.item)}" data-unit="${esc(o.unit)}" data-par="${esc(o.par)}">Save count</button></div></div></details>`}).join("")}</div>`+
- store()+`<div class="addbar"><input id="ini" placeholder="New item" aria-label="New item"><input id="inu" placeholder="Unit" aria-label="Unit" style="max-width:28%"><input id="inp" type="number" inputmode="decimal" placeholder="Par" aria-label="Par" style="max-width:20%"><button class="btn primary sq" data-act="invnew" aria-label="Add item">${I("plus")}</button></div>`};
+ store("inventory")+`<div class="addbar"><input id="ini" placeholder="New item" aria-label="New item"><input id="inu" placeholder="Unit" aria-label="Unit" style="max-width:28%"><input id="inp" type="number" inputmode="decimal" placeholder="Par" aria-label="Par" style="max-width:20%"><button class="btn primary sq" data-act="invnew" aria-label="Add item">${I("plus")}</button></div>`};
 const REASONS=["expired","hold time","dropped","wrong order"];
-S.waste=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=await Floor.list("waste");const t=nowT().date;
+S.waste=async()=>{await toolSync();const rows=await Floor.list("waste");const t=nowT().date;
  const today=rows.filter(x=>x.date===t),tq=today.reduce((a,x)=>a+(n(x.qty)||0),0);
  const wk=new Date(Date.now()-7*864e5);const top={};rows.filter(x=>new Date(x.date+"T12:00:00")>=wk).forEach(x=>{const k=String(x.item).trim();top[k]=(top[k]||0)+(n(x.qty)||0)});
  const tops=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,3);
  const quick=["Fries","Patties","Nuggets","Buns","Chicken","Pies"].map(x=>`<button type="button" class="btn" data-fill="wi" data-v="${x}">${x}</button>`).join("");
- return back+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
+ return back+oldCard("waste")+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
  <div class="card"><div class="lbl">Top 7 days</div>${tops.length?tops.map(([k,v])=>`<div class="meta" style="color:var(--ink-2)"><b>${esc(k)}</b> ${v}</div>`).join(""):`<div class="meta">Nothing logged</div>`}</div></div>
  <div class="card stack"><div class="lbl">Log waste</div><div class="quick">${quick}</div>
  <div style="display:flex;gap:8px"><input id="wi" placeholder="Item" aria-label="Item"><input id="wq" type="number" inputmode="decimal" value="1" aria-label="Quantity" style="max-width:30%"></div>
  ${pick("reason",REASONS,PICK.reason)}<button class="btn primary block" data-act="waste">Log it</button></div>
- <div class="sec">Today's log</div>${today.length?`<div class="list">${today.slice().reverse().map(x=>`<div class="row"><span class="t">${clock(x.time,1)}</span><span class="v txt">${esc(x.qty)} × ${esc(x.item)}</span>${chip("neutral",x.reason)}</div>`).join("")}</div>`:empty("Nothing wasted yet today")}`+store()};
+ <div class="sec">Today's log</div>${today.length?`<div class="list">${today.slice().reverse().map(x=>`<div class="row"><span class="t">${clock(x.time,1)}</span><span class="v txt">${esc(x.qty)} × ${esc(x.item)}</span>${chip("neutral",x.reason)}</div>`).join("")}</div>`:empty("Nothing wasted yet today")}`+store("waste")};
 const EQS={"open":["bad","Open"],"in progress":["warn","In progress"],"fixed":["good","Fixed"]};
-S.equipment=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=(await Floor.list("equipment")).slice().reverse();
+S.equipment=async()=>{await toolSync();const rows=(await Floor.list("equipment")).slice().reverse();
  const ord=x=>({open:0,"in progress":1,fixed:2}[x.status]??0);rows.sort((a,b)=>ord(a)-ord(b));const open=rows.filter(x=>x.status!=="fixed").length;
- return back+`<div class="card stack"><div class="lbl">Report an issue${chip(open?"warn":"good",open?open+" open":"All fixed")}</div>
+ return back+oldCard("equipment")+`<div class="card stack"><div class="lbl">Report an issue${chip(open?"warn":"good",open?open+" open":"All fixed")}</div>
  <input id="eqe" placeholder="Equipment (e.g. Fry vat 2)" aria-label="Equipment"><input id="eqi" placeholder="What's wrong" aria-label="Issue"><input id="eqr" placeholder="Reported by (first name)" aria-label="Reported by">
  <button class="btn primary block" data-act="eq">Report</button></div>
  ${rows.length?`<div class="list">${rows.map(x=>{const [s,w]=EQS[x.status]||EQS.open;return `<details><summary class="row"><span class="v txt">${esc(x.equipment)}<small>${esc(x.issue)}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
  <div class="det" style="padding-left:0"><div>Reported by <b>${esc(x.reported_by)||"—"}</b> · ${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${x.fixer?`<div>Fixer: <b>${esc(x.fixer)}</b></div>`:""}
  ${x.status==="fixed"?"":`<div class="stack" style="gap:8px;margin-top:8px"><input id="fx${esc(x.id)}" placeholder="Fixer (first name)" value="${esc(x.fixer||"")}" aria-label="Fixer">
- <div style="display:flex;gap:8px">${x.status!=="in progress"?`<button class="btn" style="flex:1" data-eq="${esc(x.id)}" data-st="in progress">In progress</button>`:""}<button class="btn primary" style="flex:1" data-eq="${esc(x.id)}" data-st="fixed">Fixed</button></div></div>`}</div></details>`}).join("")}</div>`:empty("No equipment issues")}`+store()};
+ <div style="display:flex;gap:8px">${x.status!=="in progress"?`<button class="btn" style="flex:1" data-eq="${esc(x.id)}" data-st="in progress">In progress</button>`:""}<button class="btn primary" style="flex:1" data-eq="${esc(x.id)}" data-st="fixed">Fixed</button></div></div>`}</div></details>`}).join("")}</div>`:empty("No equipment issues")}`+store("equipment")};
 const NTYPES=["training","ready to promote","call-out","praise"];const NST={"training":"neutral","ready to promote":"good","call-out":"warn","praise":"good"};
-S.crewnotes=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=(await Floor.list("crewnotes")).slice().reverse();
- return back+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
+S.crewnotes=async()=>{await toolSync();const rows=(await Floor.list("crewnotes")).slice().reverse();
+ return back+oldCard("crewnotes")+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
  <div class="card stack"><div class="lbl">New note</div><input id="cnn" placeholder="First name" aria-label="First name">
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
- ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store()};
+ ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v12";
+const APPVER="v13";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
-S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();setSrc(ShiftData.live());
- {const r=await ShiftData.load("Brief").catch(()=>null);if(r)setSrc(r.live,r.src);else setSrc(ShiftData.live())}const bad=ShiftData.status.bad;
- const c=!has?chip("warn","Not set"):bad==="key"?chip("bad","Didn't work"):bad?chip("warn","Can't reach"):ShiftData.live()?chip("good","Working"):chip("neutral","Saved");
+S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
+ let r=null;if(has)r=await ShiftData.load("Brief").catch(()=>null);if(r){CUR.src=r.src;setSrc(r.live,r.src)}else setSrc(false,"sample");
+ const bad=ShiftData.status.bad,src=r?r.src:"sample";
+ const state=!has?"none":bad==="key"?"key":!ShiftData.hasUrl()?"nourl":src==="live"?"live":src==="cached"?"cached":"down";
+ const c={none:chip("warn","Not set"),key:chip("bad","Didn't work"),nourl:chip("warn","No data link"),live:chip("good","Working"),cached:chip("warn","Can't refresh"),down:chip("warn","Can't reach")}[state];
+ const msg={key:"The server didn't accept this key. Check it with your GM and enter it again.",cached:"Couldn't reach the Sheet just now, so you're seeing the last saved live data. It retries automatically.",down:"Couldn't reach the Sheet, so you're seeing sample data. Check your connection; it retries automatically."}[state]||"";
+ const info={none:"Showing sample data until the key is saved.",key:"Showing sample data.",nourl:"The data link isn't set yet, so you're seeing sample data.",live:"Showing live data.",cached:"Showing saved live data.",down:"Showing sample data."}[state];
  return `<div class="card stack"><div class="lbl">Shared key${c}</div>
  ${has?`<p class="ok" role="status" id="keysaved">${I("check")} Key saved on this phone${KEYJUST?" just now":""}</p>`:""}
- ${bad?`<p class="err" role="alert">${esc(keyMsg())}.${bad==="key"?" Check the key with your GM and enter it again.":" Check your connection and try again."}</p>`:""}
- <div class="meta" style="-webkit-line-clamp:3">Data link ${ShiftData.hasUrl()?"is set":"is not set yet"}. ${has?(ShiftData.live()?"Showing live data.":"Showing sample data."):"Showing sample data until the key is saved."}</div>
+ ${msg?`<p class="err" role="alert">${esc(msg)}</p>`:""}
+ <div class="meta" style="-webkit-line-clamp:3">${info}</div>
  <input id="k" type="password" autocomplete="off" placeholder="Enter shared key" aria-label="Shared key">
  <button class="btn primary block" data-act="key">Save key</button>
  <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>

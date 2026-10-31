@@ -22,7 +22,14 @@ AppsScriptAdapter.place=async function(row){const id=posId(row);
 function wrap(A){return {name:A.name,add:(k,r)=>k==="positions"?A.place(r):A.add(k,r),update:(k,i,p)=>A.update(k,i,p),place:r=>A.place(r),
  async list(k){const rows=await A.list(k);if(k!=="positions")return rows;const d=dedupe(rows);
   if(A===LocalAdapter&&d.length!==rows.length)localStorage.setItem(A._k(k),JSON.stringify(d));return d}}}
-const WL=wrap(LocalAdapter),WA=wrap(AppsScriptAdapter);
+// Older deployed Code.gs only knows positions/breaks/checklist/fixes/handoff and answers "bad kind" for the Tools kinds.
+// Then those kinds use this phone's storage and the app shows "Tools need the Apps Script update".
+const OLD=new Set();const isBadKind=e=>/bad kind/i.test(e&&e.message||"");
+function guard(A){const g=(k,fn,loc)=>OLD.has(k)?loc():fn().catch(e=>{if(isBadKind(e)){OLD.add(k);return loc()}throw e});
+ return {name:A.name,list:k=>g(k,()=>A.list(k),()=>LocalAdapter.list(k)),add:(k,r)=>g(k,()=>A.add(k,r),()=>LocalAdapter.add(k,r)),
+  update:(k,i,p)=>g(k,()=>A.update(k,i,p),()=>LocalAdapter.update(k,i,p)),place:r=>A.place(r)}}
+const WL=wrap(LocalAdapter),WA=wrap(guard(AppsScriptAdapter));
+window.FloorCompat={needsUpdate:k=>OLD.has(k)};
 Object.defineProperty(window,"Floor",{get:()=>ShiftData.live()?WA:WL});
 window.FloorPos={key:posKey,id:posId,dedupe};
 })();

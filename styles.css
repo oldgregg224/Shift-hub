@@ -114,3 +114,7 @@ button.alert{width:100%;text-align:left;font:inherit;border:0;border-left:4px so
 #tabs button{font-size:12.5px;line-height:16px}
 #tabs button svg{width:26px;height:26px}
 :root{--tabbar:68px}
+/* v13 nav: min 12px labels, higher contrast */
+#tabs button{font:600 13px/16px var(--font);color:var(--ink-2)}
+#tabs button.on{color:var(--accent)}
+@media (min-width:700px){#tabs{justify-content:center}#tabs button{flex:0 1 120px;font-size:14px}}
