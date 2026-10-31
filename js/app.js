@@ -81,7 +81,8 @@ const chipIf=(st,txt)=>st&&st!=="neutral"&&txt&&!/NaN|undefined/.test(txt)?chip(
 function rngOf(v){const m=/^\s*(\d{1,2}):?(\d{2})?\s*(?:-|–|to)\s*(\d{1,2}):?(\d{2})?\s*$/.exec(String(v||""));if(m)return{a:+m[1]*60+(+m[2]||0),b:+m[3]*60+(+m[4]||0)};
  const h=hourOf(v);if(h==null)return null;const mm=/:(\d{2})/.exec(String(v));const a=h*60+(mm?+mm[1]:0);return{a,b:a+60}}
 const tm=m=>{m=((m%1440)+1440)%1440;const h=Math.floor(m/60),mi=m%60;return (h%12||12)+(mi?":"+String(mi).padStart(2,"0"):"")+(h>=12?"p":"a")};
-function laborPlan(r,LP,TP,CH,SL){r=(r||[]).filter(x=>!/^(header|example)$/i.test(String(x.row_type||"")));
+const AH_=["actual_hours","labor_hours","worked_hours","hours_worked"];
+function laborPlan(r,LP,TP,CH,SL,BR){r=(r||[]).filter(x=>!/^(header|example)$/i.test(String(x.row_type||"")));
  const dOf=x=>String(fld(x,["date","business_date","day"])||"").slice(0,10),T=x=>String(x.row_type||"").toUpperCase();
  const days=r.filter(x=>T(x)==="DAY"||isTot(x)),blocks=r.filter(x=>T(x)!=="DAY"&&!isTot(x)&&rngOf(fld(x,["hour","time","block"])));
  if(!days.length&&!blocks.length)return "";
@@ -97,20 +98,24 @@ function laborPlan(r,LP,TP,CH,SL){r=(r||[]).filter(x=>!/^(header|example)$/i.tes
  const lab=(o)=>{const g=o.t.g;return o.x.hour&&/[-–]/.test(o.x.hour)?tm(g.a)+"–"+tm(g.b):tm(g.a)};
  const dayLbl=d=>d===today?"Today":new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
  let h="";
- if(day){const l=num(day,LP),t=num(day,TP),c=num(day,CH),sa=num(day,SL),call=txt(fld(day,["call","labor_call"]));const s=isNaN(l)||isNaN(t)?"neutral":status(l,t,"labor");
-  h+=`<div class="card"><div class="lbl">${dd===today?"Today":"Latest · "+esc(dayLbl(dd))}${chipIf(s,(isNaN(l-t)?"":sgn(l-t,1)+" · ")+(WORD[s]||""))}</div>
+ if(day){const isT=dd===today,b=isT&&BR||{};const bl=n(b.labor_actual_pct),bs=n(b.sales_actual),bp=n(b.sales_projection);
+  const l=isNaN(bl)?num(day,LP):bl,t=num(day,TP),c=num(day,CH),ah=num(day,AH_),pj=isNaN(bp)?num(day,SL):bp,sa=bs,call=txt(fld(day,["call","labor_call"]));
+  const s=isNaN(l)||isNaN(t)||l<0||l>500?"neutral":status(l,t,"labor");const d=l-t;
+  h+=`<div class="card"><div class="lbl">${dd===today?"Today":"Latest · "+esc(dayLbl(dd))}${s==="neutral"||isNaN(d)?"":chip(s,Math.abs(d).toFixed(1)+" pts "+(d>0?"over":"under")+" target")}</div>
   <div class="hero">${isNaN(l)?(isNaN(c)?"—":esc(+c.toFixed(1))+"<small style='font-size:.45em'> cap hrs</small>"):pct(l)}</div>
-  <div class="meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${[isNaN(t)?"":"target "+pct(t),!isNaN(l)&&!isNaN(c)?"cap "+esc(+c.toFixed(1))+" hrs":"",isNaN(sa)?"":"proj "+money(sa)].filter(Boolean).join(" · ")} ${callChip(call)}</div>
+  <div class="meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${[isNaN(t)?"":"target "+pct(t),!isNaN(l)&&!isNaN(c)?"cap "+esc(+c.toFixed(1))+" hrs":"",!isNaN(ah)&&!isNaN(c)?esc(+ah.toFixed(1))+" of "+esc(+c.toFixed(1))+" hrs":"",isNaN(sa)?(isNaN(pj)?"":"sales "+money(pj)):"sales "+money(sa)].filter(Boolean).join(" · ")} ${callChip(call)}</div>
   ${[["Cut first",fld(day,["position_to_cut_first","cut_first"])],["Notes",fld(day,["prep_level_notes","prep_notes"])],["Hold times",fld(day,["hold_time_reminders","hold_notes"])]].filter(([,v])=>txt(v)).map(([k,v])=>`<p class="meta" style="-webkit-line-clamp:6"><b>${k}:</b> ${esc(txt(v))}</p>`).join("")}</div>`}
- const F=cur?["Now",cur]:nxt?["Next",nxt]:last?["Latest",last]:null;
+ const F=cur?["Now",cur]:last?["Latest",last]:nxt?["Next",nxt]:null;
+ const NX=F&&F[0]!=="Next"&&nxt?nxt:null;
  if(F){const x=F[1].x;h+=`<div class="card${F[0]==="Now"?" now":""}"><div class="lbl">${F[0]} · ${esc(lab(F[1]))}${F[1].t&&dOf(x)!==today?" "+esc(dayLbl(dOf(x))):""}${callChip(txt(x.call))}</div>
   ${txt(fld(x,["position_to_cut_first","cut_first"]))?`<div class="meta"><b>Cut first:</b> ${esc(txt(fld(x,["position_to_cut_first","cut_first"])))}</div>`:""}
   ${txt(fld(x,["prep_level_notes","prep_notes"]))?`<p class="meta" style="-webkit-line-clamp:6">${esc(txt(fld(x,["prep_level_notes","prep_notes"])))}</p>`:""}</div>`}
+ if(NX){const x=NX.x,c=txt(fld(x,["position_to_cut_first","cut_first"]));h+=`<div class="card"><div class="lbl">Next · ${esc(lab(NX))}${dOf(x)!==today?" "+esc(dayLbl(dOf(x))):""}${callChip(txt(x.call))}</div>${c?`<div class="meta"><b>Cut first:</b> ${esc(c)}</div>`:""}</div>`}
  const up=B.filter(o=>o.t.en>nowM-36e5*2);
  if(up.length)h+=`<div class="sec">Labor calls</div><div class="list">${up.map(o=>{const x=o.x,cut=txt(fld(x,["position_to_cut_first","cut_first"])),nt=txt(fld(x,["prep_level_notes","prep_notes"]));
-  return `<details><summary class="row"><span class="t">${esc(lab(o))}</span><span class="v txt">${esc(dOf(x)===today?"Today":dayLbl(dOf(x)))}<small>${esc(cut||"—")}</small></span>${callChip(txt(x.call))}${I("chevron-down","cv")}</summary>${nt?`<p class="meta" style="padding:0 12px 12px;-webkit-line-clamp:8">${esc(nt)}</p>`:""}</details>`}).join("")}</div>`;
+  return `<details><summary class="row"><span class="t">${esc(lab(o))}</span><span class="v txt">${esc(dOf(x)===today?"Today":dayLbl(dOf(x)))}${cut?`<small>${esc(cut)}</small>`:""}</span>${callChip(txt(x.call))}${I("chevron-down","cv")}</summary>${nt?`<p class="meta" style="padding:0 12px 12px;-webkit-line-clamp:8">${esc(nt)}</p>`:""}</details>`}).join("")}</div>`;
  return h||empty("No labor plan yet")}
-async function whoHome(){try{const {rows}=await roster(),now=shiftNow();const sr=rows.filter(x=>x.date===now.date&&x.shift===now.shift);if(!sr.length)return "";
+async function whoHome(){try{const {rows}=await Promise.race([roster(),new Promise((_,j)=>setTimeout(()=>j(new Error("slow")),2500))]),now=shiftNow();const sr=rows.filter(x=>x.date===now.date&&x.shift===now.shift);if(!sr.length)return "";
  const m=sr.filter(x=>String(x.role).toLowerCase()==="manager").map(x=>first(x.first_name)).join(", ")||"—",c=sr.length-sr.filter(x=>String(x.role).toLowerCase()==="manager").length;
  return `<button class="card tool" type="button" data-go="whoson">${I("users")}<span><b>Who's on · ${esc(m)}</b><span class="meta">${c} crew this shift</span></span>${I("chevron-right","cv")}</button>`}catch(e){return ""}}
 const S={
@@ -133,7 +138,7 @@ async labor(){const r=await get("Labor");
  const LP=["labor_pct","labor_percent","labor_pct_actual","actual_labor_pct","actual_pct","crew_labor_pct","labor"],TP=["target_pct","labor_target_pct","target","goal_pct","labor_goal_pct","projected_labor_pct","labor_projection_pct"],
  AH=["actual_hours","labor_hours","worked_hours","actual_hrs","hours_worked","hours"],CH=["cap_hours","scheduled_hours","planned_hours","budget_hours","cap_hrs","sched_hours","projected_hours"],SL=["sales","net_sales","sales_actual","actual_sales"];
  const has=x=>!isNaN(num(x,LP))||!isNaN(num(x,AH));const {hours,total}=hourly(r,has);
- if(!hours.some(o=>has(o.x))){const pv=laborPlan(r,LP,TP,CH,SL);if(pv)return keyAlert()+pv}
+ if(!hours.some(o=>has(o.x))){let BR=null;try{const b=await ShiftData.load("Brief");BR=(b.rows||[]).filter(x=>!/^(example|header)$/i.test(String(x.row_type||""))).pop()||null}catch(e){}const pv=laborPlan(r,LP,TP,CH,SL,BR);if(pv)return keyAlert()+pv}
  if(!hours.some(o=>has(o.x))&&!total)return keyAlert()+empty("No labor data yet");
  const callSt=c=>{c=String(c||"").toUpperCase();return c.includes("EARLY")?"bad":c.includes("HOLD")?"warn":"good"};
  const tgt=x=>{const t=num(x,TP);return isNaN(t)?NaN:t};
@@ -177,7 +182,7 @@ async speed(){const r=await get("Speed");
 async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return keyAlert()+empty("No guest scores yet")+cmt;const f=r.find(x=>x.coaching_focus);
  const cm=r.filter(x=>x.low_score_comment_names_removed);
  return keyAlert()+(f?`<div class="tip">${I("target")}<span>${esc(f.coaching_focus)}</span></div>`:"")+
- r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div><div class="meta">last week ${isNaN(l)?"—":l}</div></div>`}).join("")+
+ r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${isNaN(l)?"":chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div>${isNaN(l)?"":`<div class="meta">last week ${l}</div>`}</div>`}).join("")+
  (cm.length?`<details class="card more"><summary>Survey low-score comments: ${cm.length}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")+cmt},
 
 async floor(){await toolSync();const F=window.Floor;const sub=floorSub;
@@ -213,9 +218,13 @@ async floor(){await toolSync();const F=window.Floor;const sub=floorSub;
 const scrub=t=>String(t??"").replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g,"[email]").replace(/\d{11,}/g,"[number]")
  .replace(/(\+?\d[\s.-]?)?(\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}\b/g,"[phone]").replace(/\d{6,}/g,"[number]");
 let cmtF="all",cmtDays=7;
-async function comments(){let rows=[],live=false;try{const r=await ShiftData.load("Comments");rows=r.rows||[];live=r.live}catch(e){return `<div class="card"><div class="lbl">Comments${chip("bad","Error")}</div><div class="meta">Couldn't load comments.</div></div>`}
- if(live)rows=rows.filter(x=>String(x.row_type).toUpperCase()==="DATA");
- else if(rows.length){// sample: shift EXAMPLE dates so the newest is today
+async function comments(){let rows=[],live=false,src="";try{const r=await ShiftData.load("Comments");rows=r.rows||[];live=r.live;src=r.src}catch(e){return `<div class="card"><div class="lbl">Comments${chip("bad","Error")}</div><div class="meta">Couldn't load comments.</div></div>`}
+ let bc=NaN;try{const b=await ShiftData.load("Brief");const x=(b.rows||[]).filter(x=>!/^(example|header)$/i.test(String(x.row_type||""))).pop();bc=n(x&&x.new_smg_comment_count)}catch(e){}
+ const brief=isNaN(bc)?"":` Brief reports ${bc} new comment${bc===1?"":"s"}.`;
+ if(src==="unsupported")return `<div class="sec">Comments</div><div class="card stack" role="status"><div class="lbl">Comments need the Apps Script update${chip("warn","Not shared yet")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script doesn't serve the Comments tab yet.${brief} Ask your GM to redeploy the latest Shift Hub Apps Script.</div></div>`;
+ if(live)rows=rows.filter(x=>String(x.row_type||"").toUpperCase()==="DATA").map(x=>Object.assign({},x,{date:isoD(x.date)}));
+ if(live&&!rows.length)return `<div class="sec">Comments</div><div class="card stack" role="status"><div class="lbl">No comments in the Sheet yet${isNaN(bc)?"":chip("neutral","Brief: "+bc+" new")}</div><div class="meta" style="-webkit-line-clamp:6">The Comments tab has no DATA rows yet.${brief}</div></div>`;
+ if(!live&&rows.length){// sample: shift EXAMPLE dates so the newest is today
   const mx=rows.map(x=>x.date).sort().pop(),b=new Date(mx+"T12:00:00"),t=new Date();t.setHours(12,0,0,0);
   rows=rows.map(x=>{const d=new Date(x.date+"T12:00:00"),o=new Date(t);o.setDate(o.getDate()+Math.round((d-b)/864e5));return Object.assign({},x,{date:ymd(o)})})}
  const since=new Date();since.setDate(since.getDate()-cmtDays+1);const cut=ymd(since);
@@ -226,7 +235,7 @@ async function comments(){let rows=[],live=false;try{const r=await ShiftData.loa
  const seg=(g,opts,curv)=>`<div class="seg" role="tablist">${opts.map(([k,l])=>`<button type="button" role="tab" data-${g}="${k}" class="${String(k)===String(curv)?"on":""}" aria-selected="${String(k)===String(curv)}">${l}</button>`).join("")}</div>`;
  const day=s=>{const d=new Date(s+"T12:00:00");return isNaN(d)?esc(s):d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})};
  return `<div class="sec">Comments</div><div class="card stack"><div class="lbl">Last ${cmtDays} days${cmtF==="all"?chip("neutral","All: "+inRange.length):cmtF==="negative"?chip(neg?"warn":"good","Negative: "+neg):chip("good","Positive: "+list.length)}</div>
- <p class="meta" style="margin:0">Low scores (1–2): ${inRange.filter(x=>n(x.score)<=2).length} · Negative: ${neg} · Positive: ${inRange.filter(x=>sen(x)==="positive").length}</p>
+ <p class="meta" style="margin:0">Low scores (1–2): ${inRange.filter(x=>n(x.score)<=2).length} · Negative: ${neg} · Positive: ${inRange.filter(x=>sen(x)==="positive").length}${isNaN(bc)?"":" · Brief: "+bc+" new"}</p>
  ${seg("cmtf",[["all","All"],["negative","Negative"],["positive","Positive"]],cmtF)}${seg("cmtd",[[7,"7 days"],[14,"14 days"]],cmtDays)}
  ${list.length?`<div class="list">${list.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="note-ts" style="margin:0;flex:1">${day(x.date)}</span>${sc(x)}${chip(sen(x)==="negative"?"bad":sen(x)==="positive"?"good":"neutral",sen(x)?sen(x)[0].toUpperCase()+sen(x).slice(1):"—")}</div><div style="margin-top:4px">${esc(scrub(x.comment))}</div></div>`).join("")}</div>`:empty(cmtF==="all"?"No comments in this range":"No "+cmtF+" comments in this range")}</div>`}
 // ---- Who's on (Roster) ----
@@ -319,7 +328,7 @@ S.crewnotes=async()=>{await toolSync();const rows=(await Floor.list("crewnotes")
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v14";
+const APPVER="v15";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();

@@ -34,7 +34,7 @@ const api=(params,body)=>body?api_(params,body):serial(()=>api_(params));
 const LK=t=>"shifthub_live_"+t,good={},fail={},inflight={},timers={},unsup={};
 function getGood(t){if(good[t])return good[t];try{const o=JSON.parse(localStorage.getItem(LK(t))||"null");if(o&&Array.isArray(o.rows))return good[t]=o}catch(e){}return null}
 function setGood(t,rows){const o={rows,t:Date.now()};good[t]=o;try{localStorage.setItem(LK(t),JSON.stringify(o))}catch(e){}return o}
-function reset(all){for(const k in fail)delete fail[k];for(const k in unsup)delete unsup[k];for(const k in timers){clearTimeout(timers[k]);delete timers[k]}
+function reset(all){for(const k in fail)delete fail[k];for(const k in unsup)delete unsup[k];try{Object.keys(sessionStorage).filter(k=>k.startsWith("shifthub_unsup_")).forEach(k=>sessionStorage.removeItem(k))}catch(_){}for(const k in timers){clearTimeout(timers[k]);delete timers[k]}
  if(all){for(const k in good)delete good[k];try{Object.keys(localStorage).filter(k=>k.startsWith("shifthub_live_")).forEach(k=>localStorage.removeItem(k))}catch(e){}}
  else for(const k in good)good[k].t=0}
 const emit=t=>{try{window.dispatchEvent(new CustomEvent("shifthub:data",{detail:{tab:t}}))}catch(e){}};
@@ -44,7 +44,7 @@ function refresh(t){if(inflight[t])return inflight[t];
   e=>{console.warn("live load failed",t,e.message);
    if(/bad key/i.test(e.message)){st.bad="key";st.ok=false;throw e}
    // Older deployed Code.gs answers "bad tab" for tabs it does not know (e.g. Roster): the server is reachable, so no retry loop.
-   if(/bad tab|bad kind|unknown tab/i.test(e.message)){unsup[t]=e.message;delete fail[t];clearTimeout(timers[t]);delete timers[t];st.ok=true;if(st.bad==="net")st.bad="";throw e}
+   if(/bad tab|bad kind|unknown tab/i.test(e.message)){unsup[t]=e.message;try{sessionStorage.setItem("shifthub_unsup_"+t,e.message)}catch(_){}delete fail[t];clearTimeout(timers[t]);delete timers[t];st.ok=true;if(st.bad==="net")st.bad="";throw e}
    st.bad="net";st.netAt=Date.now();const f=fail[t]=fail[t]||{n:0};f.n++;f.at=Date.now();f.msg=e.message;
    clearTimeout(timers[t]);timers[t]=setTimeout(()=>{delete timers[t];if(canTry()&&st.bad!=="key")refresh(t).then(()=>emit(t),()=>{})},BACKOFF[Math.min(f.n-1,BACKOFF.length-1)]);
    throw e}).finally(()=>{delete inflight[t]});
@@ -55,12 +55,13 @@ async function sample(t){if(t==="Meta")return{rows:[],live:false,src:"sample"};
 // load(tab): fresh live rows -> src "live"; last good live rows (cache) -> src "cached" (refreshes in background); else sample.
 async function load(t,o={}){
  if(!canTry()||st.bad==="key")return sample(t);
+ if(!unsup[t])try{const m=sessionStorage.getItem("shifthub_unsup_"+t);if(m){unsup[t]=m;refresh(t).then(()=>{delete unsup[t];try{sessionStorage.removeItem("shifthub_unsup_"+t)}catch(_){}emit(t)},()=>{})}}catch(_){}
  if(unsup[t])return{rows:[],live:true,src:"unsupported",at:0};
  const g=getGood(t),age=g?Date.now()-g.t:1e15;
  if(g&&!o.fresh&&age<FRESH_TTL&&!fail[t])return{rows:g.rows,live:true,src:"live",at:g.t};
  if(g&&!o.fresh){ // show saved data at once; refresh quietly and tell the app when new rows land
   if(!fail[t]||!timers[t])refresh(t).then(()=>emit(t),()=>emit(t));
-  return{rows:g.rows,live:true,src:fail[t]?"cached":(g.t&&age<FRESH_TTL*5?"live":"cached"),at:g.t}}
+  return{rows:g.rows,live:true,src:fail[t]?"cached":"live",at:g.t,refreshing:true}}
  try{const n=await refresh(t);return{rows:n.rows,live:true,src:"live",at:n.t}}
  catch(e){if(unsup[t])return{rows:[],live:true,src:"unsupported",at:0};const g2=getGood(t);if(g2&&st.bad!=="key")return{rows:g2.rows,live:true,src:"cached",at:g2.t};return sample(t)}}
 const cached=t=>!!getGood(t);
