@@ -32,6 +32,9 @@ function setSrc(live){const p=$("#src");p.classList.toggle("live",live);
  p.setAttribute("aria-label",(live?"Live data":"Sample data")+". Open settings")}
 async function get(tab){const r=await ShiftData.load(tab);setSrc(r.live);await setUpd(tab,r.rows);return r.rows}
 
+async function whoHome(){try{const {rows}=await roster(),now=shiftNow();const sr=rows.filter(x=>x.date===now.date&&x.shift===now.shift);if(!sr.length)return "";
+ const m=sr.filter(x=>String(x.role).toLowerCase()==="manager").map(x=>first(x.first_name)).join(", ")||"—",c=sr.length-sr.filter(x=>String(x.role).toLowerCase()==="manager").length;
+ return `<button class="card tool" type="button" data-go="whoson">${I("users")}<span><b>Who's on · ${esc(m)}</b><span class="meta">${c} crew this shift</span></span>${I("chevron-right","cv")}</button>`}catch(e){return ""}}
 const S={
 async home(){const r=await get("Brief"),b=r[0]||{};
  const sa=n(b.sales_actual),sp=n(b.sales_projection),la=n(b.labor_actual_pct),lp=n(b.labor_projection_pct);
@@ -45,7 +48,7 @@ async home(){const r=await get("Brief"),b=r[0]||{};
  kpi("Overtime",ot,ot?b.overtime_watch_first_names:"No one close",status(ot,0,"count"),ot?"Watch":"Clear","floor",1)+
  kpi("Overdue",od,od?b.overdue_checklists:"All checklists done",od?"bad":"good",od?"Late":"Clear","floor",1)+
  kpi("Guest notes",cm,"new comments",null,null,"guest",1)+
- kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`},
+ kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+await whoHome()},
 
 async labor(){const r=await get("Labor");if(!r.length)return empty("No labor data yet");
  const callSt=c=>{c=String(c||"").toUpperCase();return c.includes("EARLY")?"bad":c.includes("HOLD")?"warn":"good"};
@@ -102,8 +105,88 @@ async floor(){$("#upd").textContent="";const F=window.Floor;const sub=floorSub;
   bar=`<input id="fi" placeholder="Fix to do" aria-label="Fix"><button class="btn primary sq" data-act="fix" aria-label="Add">${I("plus")}</button>`}
  if(sub==="handoff"){body=rows.length?`<div class="list">${rows.slice(-10).reverse().map(x=>`<div class="row" style="display:block;padding:12px 0"><div class="note-ts">${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${esc(x.note)}</div>`).join("")}</div>`:empty("No handoff notes");
   bar=`<input id="hn" placeholder="Note for next manager" aria-label="Note"><button class="btn primary sq" data-act="hand" aria-label="Save note">${I("plus")}</button>`}
- return seg+body+store+`<div class="addbar">${bar}</div>`}
+ return back+seg+body+store+`<div class="addbar">${bar}</div>`}
 };
+// ---- Who's on (Roster) ----
+const SHIFTS=[["6a-2p","6 AM – 2 PM"],["2p-10p","2 PM – 10 PM"],["10p-6a","10 PM – 6 AM"]];
+const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+function shiftNow(){const d=new Date(),h=d.getHours();const op=new Date(d);if(h<6)op.setDate(op.getDate()-1);
+ return{date:ymd(op),shift:h>=6&&h<14?"6a-2p":h>=14&&h<22?"2p-10p":"10p-6a",op}}
+async function roster(){const r=await ShiftData.load("Roster");let rows=r.rows||[];
+ if(!r.live&&rows.length){// sample: move EXAMPLE dates so the first one is "today"
+  const base=rows.map(x=>x.date).sort()[0],op=shiftNow().op;const b=new Date(base+"T12:00:00");
+  rows=rows.map(x=>{const d=new Date(x.date+"T12:00:00");const o=new Date(op);o.setDate(o.getDate()+Math.round((d-b)/864e5));return Object.assign({},x,{date:ymd(o)})})}
+ return{rows,live:r.live}}
+const first=s=>String(s||"").trim().split(/\s+/)[0];
+let whoDay=0;
+S.whoson=async()=>{const {rows,live}=await roster();setSrc(live);await setUpd("Roster",rows);
+ const now=shiftNow(),d=new Date(now.op);d.setDate(d.getDate()+whoDay);const day=ymd(d);
+ const seg=`<div class="seg" role="tablist">${["Today","Tomorrow"].map((l,i)=>`<button type="button" role="tab" data-who="${i}" class="${i===whoDay?"on":""}" aria-selected="${i===whoDay}">${l}</button>`).join("")}</div>`;
+ const dayRows=rows.filter(x=>x.date===day);
+ const cards=SHIFTS.map(([k,lbl])=>{const sr=dayRows.filter(x=>x.shift===k);const mg=sr.filter(x=>String(x.role).toLowerCase()==="manager"),cr=sr.filter(x=>String(x.role).toLowerCase()!=="manager").sort((a,b)=>String(a.start).localeCompare(b.start));
+  const isNow=!whoDay&&k===now.shift;
+  return `<div class="card${isNow?" now":""}"><div class="lbl">${lbl}${isNow?chip("good","On now"):chip("neutral",cr.length+" crew")}</div>
+  <div class="mgr">${mg.length?mg.map(x=>`<b>${esc(first(x.first_name))}</b>`).join(", "):"<span class='meta'>No manager listed</span>"}<span class="meta" style="margin:0">Manager</span></div>
+  ${cr.length?cr.map(x=>`<div class="row"><span class="v txt">${esc(first(x.first_name))}<small>${esc(x.position)}</small></span><span class="tm">${clock(x.start,1)}–${clock(x.end,1)}</span></div>`).join(""):`<p class="meta">No crew listed</p>`}</div>`}).join("");
+ return seg+`<p class="upd" style="padding:0">${d.toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}</p>`+cards};
+
+// ---- Tools ----
+const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],["inventory","Inventory","package","Counts, low stock, order list"],["waste","Waste log","trash","Quick log, daily totals"],["equipment","Equipment","wrench","Issues and fixes"],["crewnotes","Crew notes","notebook","Training, praise, call-outs"]];
+const back=`<button class="btn" data-go="tools" style="align-self:flex-start">${I("chevron-left")}Tools</button>`;
+const store=()=>`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
+const nowT=()=>{const d=new Date();return{date:ymd(d),time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}};
+const pick=(g,opts,cur)=>`<div class="seg" data-group="${g}">${opts.map(o=>`<button type="button" data-pick="${esc(o)}" class="${o===cur?"on":""}">${esc(o[0].toUpperCase()+o.slice(1))}</button>`).join("")}</div>`;
+const PICK={reason:"expired",ntype:"training"};
+S.tools=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());
+ return TOOLS.map(([k,l,ic,m])=>`<button class="card tool" type="button" data-go="${k}">${I(ic)}<span><b>${l}</b><span class="meta">${m}</span></span>${I("chevron-right","cv")}</button>`).join("")};
+const SEED=[["Buns","cases",12],["Patties","cases",10],["Fries","cases",15],["Nuggets","cases",8],["Cups","sleeves",20],["Lids","sleeves",20],["Sauce","boxes",6]];
+S.inventory=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=(await Floor.list("inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
+ const by={};SEED.forEach(([i,u,p])=>by[i.toLowerCase()]={item:i,unit:u,par:p,hist:[]});
+ rows.forEach(x=>{const k=String(x.item).trim().toLowerCase();if(!k)return;const o=by[k]||(by[k]={item:x.item,unit:x.unit,par:"",hist:[]});if(x.unit)o.unit=x.unit;if(x.par!==""&&x.par!=null)o.par=n(x.par);if(x.on_hand!==""&&x.on_hand!=null)o.hist.push({q:n(x.on_hand),t:new Date(x.ts)})});
+ const items=Object.values(by);
+ const usage=o=>{const h=o.hist;if(h.length<2)return "";const a=h[h.length-2],b=h[h.length-1],used=a.q-b.q,days=Math.max((b.t-a.t)/864e5,.01);
+  let tot=0,td=0;for(let i=1;i<h.length-1;i++){const u=h[i-1].q-h[i].q,dd=(h[i].t-h[i-1].t)/864e5;if(u>=0&&dd>0){tot+=u;td+=dd}}
+  if(used<0)return `<div><b>Restocked</b> since last count (+${-used} ${esc(o.unit)})</div>`;
+  if(!td)return `<div><b>Used:</b> ${used} ${esc(o.unit)} since last count</div>`;
+  const exp=tot/td*days,diff=used-exp,st=Math.abs(diff)<=Math.max(1,exp*.1)?"good":diff>0?"bad":"warn";
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span><b>Used</b> ${used} vs <b>expected</b> ${exp.toFixed(1)} ${esc(o.unit)}</span>${chip(st,st==="good"?"On track":diff>0?"Over":"Under")}</div>`};
+ const st=o=>{const q=o.hist.length?o.hist[o.hist.length-1].q:NaN;if(isNaN(q)||!o.par)return["neutral","Not counted"];return q<o.par*.5?["bad","Low"]:q<o.par?["warn","Below par"]:["good","OK"]};
+ const order=items.filter(o=>o.hist.length&&o.par&&o.par-o.hist[o.hist.length-1].q>0);
+ return back+(order.length?`<div class="card"><div class="lbl">Order list${chip("warn",order.length+(order.length>1?" items":" item"))}</div>${order.map(o=>`<div class="row"><span class="v txt">${esc(o.item)}</span><b>${o.par-o.hist[o.hist.length-1].q} ${esc(o.unit)}</b></div>`).join("")}</div>`:"")+
+ `<div class="sec">Counts</div><div class="list">${items.map((o,i)=>{const q=o.hist.length?o.hist[o.hist.length-1].q:"";const [s,w]=st(o);
+  return `<details><summary class="row"><span class="v txt">${esc(o.item)}<small>${q===""?"—":q} of ${o.par||"—"} ${esc(o.unit)}${o.hist.length?" · "+o.hist[o.hist.length-1].t.toLocaleDateString("en-US",{weekday:"short"}):""}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
+  <div class="det" style="padding-left:0"><div class="stack" style="gap:8px">${usage(o)}<div style="display:flex;gap:8px"><input id="ioh${i}" type="number" inputmode="decimal" placeholder="On hand" aria-label="On hand"><input id="ipar${i}" type="number" inputmode="decimal" placeholder="Par ${o.par||""}" aria-label="Par"></div>
+  <button class="btn primary block" data-act="inv" data-i="${i}" data-item="${esc(o.item)}" data-unit="${esc(o.unit)}" data-par="${esc(o.par)}">Save count</button></div></div></details>`}).join("")}</div>`+
+ store()+`<div class="addbar"><input id="ini" placeholder="New item" aria-label="New item"><input id="inu" placeholder="Unit" aria-label="Unit" style="max-width:28%"><input id="inp" type="number" inputmode="decimal" placeholder="Par" aria-label="Par" style="max-width:20%"><button class="btn primary sq" data-act="invnew" aria-label="Add item">${I("plus")}</button></div>`};
+const REASONS=["expired","hold time","dropped","wrong order"];
+S.waste=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=await Floor.list("waste");const t=nowT().date;
+ const today=rows.filter(x=>x.date===t),tq=today.reduce((a,x)=>a+(n(x.qty)||0),0);
+ const wk=new Date(Date.now()-7*864e5);const top={};rows.filter(x=>new Date(x.date+"T12:00:00")>=wk).forEach(x=>{const k=String(x.item).trim();top[k]=(top[k]||0)+(n(x.qty)||0)});
+ const tops=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,3);
+ const quick=["Fries","Patties","Nuggets","Buns","Chicken","Pies"].map(x=>`<button type="button" class="btn" data-fill="wi" data-v="${x}">${x}</button>`).join("");
+ return back+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
+ <div class="card"><div class="lbl">Top 7 days</div>${tops.length?tops.map(([k,v])=>`<div class="meta" style="color:var(--ink-2)"><b>${esc(k)}</b> ${v}</div>`).join(""):`<div class="meta">Nothing logged</div>`}</div></div>
+ <div class="card stack"><div class="lbl">Log waste</div><div class="quick">${quick}</div>
+ <div style="display:flex;gap:8px"><input id="wi" placeholder="Item" aria-label="Item"><input id="wq" type="number" inputmode="decimal" value="1" aria-label="Quantity" style="max-width:30%"></div>
+ ${pick("reason",REASONS,PICK.reason)}<button class="btn primary block" data-act="waste">Log it</button></div>
+ <div class="sec">Today's log</div>${today.length?`<div class="list">${today.slice().reverse().map(x=>`<div class="row"><span class="t">${clock(x.time,1)}</span><span class="v txt">${esc(x.qty)} × ${esc(x.item)}</span>${chip("neutral",x.reason)}</div>`).join("")}</div>`:empty("Nothing wasted yet today")}`+store()};
+const EQS={"open":["bad","Open"],"in progress":["warn","In progress"],"fixed":["good","Fixed"]};
+S.equipment=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=(await Floor.list("equipment")).slice().reverse();
+ const ord=x=>({open:0,"in progress":1,fixed:2}[x.status]??0);rows.sort((a,b)=>ord(a)-ord(b));const open=rows.filter(x=>x.status!=="fixed").length;
+ return back+`<div class="card stack"><div class="lbl">Report an issue${chip(open?"warn":"good",open?open+" open":"All fixed")}</div>
+ <input id="eqe" placeholder="Equipment (e.g. Fry vat 2)" aria-label="Equipment"><input id="eqi" placeholder="What's wrong" aria-label="Issue"><input id="eqr" placeholder="Reported by (first name)" aria-label="Reported by">
+ <button class="btn primary block" data-act="eq">Report</button></div>
+ ${rows.length?`<div class="list">${rows.map(x=>{const [s,w]=EQS[x.status]||EQS.open;return `<details><summary class="row"><span class="v txt">${esc(x.equipment)}<small>${esc(x.issue)}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
+ <div class="det" style="padding-left:0"><div>Reported by <b>${esc(x.reported_by)||"—"}</b> · ${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${x.fixer?`<div>Fixer: <b>${esc(x.fixer)}</b></div>`:""}
+ ${x.status==="fixed"?"":`<div class="stack" style="gap:8px;margin-top:8px"><input id="fx${esc(x.id)}" placeholder="Fixer (first name)" value="${esc(x.fixer||"")}" aria-label="Fixer">
+ <div style="display:flex;gap:8px">${x.status!=="in progress"?`<button class="btn" style="flex:1" data-eq="${esc(x.id)}" data-st="in progress">In progress</button>`:""}<button class="btn primary" style="flex:1" data-eq="${esc(x.id)}" data-st="fixed">Fixed</button></div></div>`}</div></details>`}).join("")}</div>`:empty("No equipment issues")}`+store()};
+const NTYPES=["training","ready to promote","call-out","praise"];const NST={"training":"neutral","ready to promote":"good","call-out":"warn","praise":"good"};
+S.crewnotes=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=(await Floor.list("crewnotes")).slice().reverse();
+ return back+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
+ <div class="card stack"><div class="lbl">New note</div><input id="cnn" placeholder="First name" aria-label="First name">
+ ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
+ ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store()};
+
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();setSrc(ShiftData.live());
  return `<div class="card stack"><div class="lbl">Shared key${chip(has?"good":"warn",has?"Saved on this phone":"Not set")}</div>
  <div class="meta" style="-webkit-line-clamp:3">Data link ${ShiftData.hasUrl()?"is set":"is not set yet"}. ${has?"":"Showing sample data until the key is saved."}</div>
@@ -111,19 +194,23 @@ S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();se
  <button class="btn primary block" data-act="key">Save key</button>
  <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>`};
 
-const TITLE={home:"Home",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",floor:"Floor",settings:"Settings"};
+const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",settings:"Settings"};
+const TABOF={floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools"};
 let cur="home",floorSub="positions",timer=null;
 function tick(){document.querySelectorAll("[data-since]").forEach(el=>{const m=Math.floor((Date.now()-new Date(el.dataset.since))/60000);
  el.className="chip "+(m>=30?"bad":m>=25?"warn":"good");el.textContent=m+" min"})}
 async function show(s){cur=s;$("#title").textContent=TITLE[s];
- document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===s;b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
+ document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
  app.innerHTML=empty("Loading…");try{app.innerHTML=await S[s]()}catch(e){app.innerHTML=`<div class="card"><div class="lbl">Error${chip("bad","Problem")}</div><div class="meta">${esc(e.message)}</div></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
- window.scrollTo(0,0)}
+ const nw=document.querySelector(".card.now");if(nw&&s==="whoson")nw.scrollIntoView({block:"center"});else window.scrollTo(0,0)}
 document.querySelectorAll("[data-i]").forEach(el=>el.outerHTML=I(el.dataset.i));
 $("#gear").innerHTML=I("settings");
 $("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)show(b.dataset.s)};
 app.addEventListener("click",async e=>{const go=e.target.closest("[data-go]");if(go){show(go.dataset.go);return}
+ const wh=e.target.closest("[data-who]");if(wh){whoDay=+wh.dataset.who;show("whoson");return}
+ const pk=e.target.closest("[data-pick]");if(pk){const g=pk.parentElement.dataset.group;PICK[g]=pk.dataset.pick;pk.parentElement.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===pk));return}
+ const fl=e.target.closest("[data-fill]");if(fl){$("#"+fl.dataset.fill).value=fl.dataset.v;$("#wq").focus();return}
  const sb=e.target.closest("[data-sub]");if(sb){floorSub=sb.dataset.sub==="notes"?"handoff":sb.dataset.sub;show("floor");return}
  const t=e.target.closest("button,input")||e.target,F=window.Floor,v=id=>($("#"+id)||{}).value?.trim();
  try{const a=t.dataset.act;
@@ -134,6 +221,12 @@ app.addEventListener("click",async e=>{const go=e.target.closest("[data-go]");if
  else if(a==="chk"&&v("ci"))await F.add("checklist",{item:v("ci")});
  else if(a==="fix"&&v("fi"))await F.add("fixes",{item:v("fi")});
  else if(a==="hand"&&v("hn"))await F.add("handoff",{note:v("hn")});
+ else if(a==="inv"){const i=t.dataset.i,q=v("ioh"+i),p=v("ipar"+i);if(!q&&!p)return;await F.add("inventory",{item:t.dataset.item,unit:t.dataset.unit,on_hand:q||"",par:p||t.dataset.par||""});show("inventory");return}
+ else if(a==="invnew"&&v("ini")){await F.add("inventory",{item:v("ini"),unit:v("inu")||"",on_hand:"",par:v("inp")||""});show("inventory");return}
+ else if(a==="waste"&&v("wi")){const w=nowT();await F.add("waste",{date:w.date,time:w.time,item:v("wi"),qty:v("wq")||"1",reason:PICK.reason});show("waste");return}
+ else if(a==="eq"&&v("eqe")){await F.add("equipment",{equipment:v("eqe"),issue:v("eqi")||"",reported_by:first(v("eqr")),status:"open",fixer:"",updated:new Date().toISOString()});show("equipment");return}
+ else if(t.dataset.eq){await F.update("equipment",t.dataset.eq,{status:t.dataset.st,fixer:first(v("fx"+t.dataset.eq)),updated:new Date().toISOString()});show("equipment");return}
+ else if(a==="cn"&&v("cnn")&&v("cnt")){await F.add("crewnotes",{date:nowT().date,first_name:first(v("cnn")),type:PICK.ntype,note:v("cnt")});show("crewnotes");return}
  else if(t.dataset.back)await F.update("breaks",t.dataset.back,{back:new Date().toISOString()});
  else if(t.dataset.chk)await F.update("checklist",t.dataset.chk,{done:t.checked});
  else if(t.dataset.fix)await F.update("fixes",t.dataset.fix,{done:t.checked});
