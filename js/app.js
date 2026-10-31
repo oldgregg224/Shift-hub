@@ -201,7 +201,8 @@ async floor(){FLATE=FLATE||{};const TS=within(toolSync(),2000,null);const F=wind
  const lp=F.list(sub).then(v=>{try{localStorage.setItem("shifthub_flc_"+sub,JSON.stringify(v))}catch(e){}return v});let late=false;
  const rows=await within(lp,2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE[sub]||0)<3000)return;FLATE[sub]=Date.now();if(cur==="floor"&&floorSub===sub&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("floor")},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_"+sub)||"[]")}catch(e){return[]}});const store=`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
  const tm=ts=>new Date(ts).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
- const chkRow=(x,attr)=>`<label class="chk"><input type="checkbox" ${attr}="${esc(x.id)}" ${x.done?"checked":""}><span class="box">${I("check")}</span><span>${esc(x.item)}</span></label>`;
+ const chkRow=(x,attr)=>`<div style="display:flex;align-items:center;gap:8px"><label class="chk" style="flex:1"><input type="checkbox" ${attr}="${esc(x.id)}" ${x.done?"checked":""}><span class="box">${I("check")}</span><span>${esc(x.item)}</span></label>${delBtn(attr==="data-chk"?"checklist":"fixes",x.id)}</div>`;
+ const chkList=(attr,emp)=>{const vis=rows.filter(x=>SHOWDONE||!x.done),nd=rows.filter(x=>x.done).length;return (vis.length?`<div class="list">${vis.map(x=>chkRow(x,attr)).join("")}</div>`:empty(rows.length?"All done.":emp))+doneTog(nd)};
  let body="",bar="";
  if(sub==="positions"){const now=shiftNow(),sl=(SHIFTS.find(x=>x[0]===now.shift)||[])[1];
   const today=rows.filter(x=>!x.date||x.date===now.date&&(!x.shift||x.shift===now.shift));
@@ -213,12 +214,12 @@ async floor(){FLATE=FLATE||{};const TS=within(toolSync(),2000,null);const F=wind
    return `<div class="row"><span class="v txt">${esc(nm)}<small>${esc(x.position)} · ${clock(x.start,1)}–${clock(x.end,1)}</small></span>${String(x.role).toLowerCase()==="manager"?chip("neutral","Manager"):""}${pl?chip("good",pl):""}<button class="btn" type="button" data-place="${esc(nm)}" data-pos="${esc(x.position)}" aria-label="Place ${esc(nm)}">${pl?"Move":"Place"}</button></div>`}).join("")}</div>`:empty("No crew on today's roster for this shift. Add Roster rows in the Sheet, or place someone below."));
   bar=`<input id="pp" placeholder="Position" aria-label="Position"><input id="pn" placeholder="First name" aria-label="First name" style="max-width:40%"><button class="btn primary sq" data-act="pos" aria-label="Place">${I("plus")}</button>`}
  if(sub==="breaks"){const on=rows.filter(x=>!x.back),done=rows.filter(x=>x.back);
-  body=(on.length?`<div class="list">${on.map(x=>`<div class="row"><span class="v txt">${esc(x.name)}<small>out ${tm(x.ts)}</small></span><span class="chip" data-since="${esc(x.ts)}"></span><button class="btn" data-back="${esc(x.id)}">Back</button></div>`).join("")}</div>`:empty("No one on break right now. Type a first name below and tap Start."))+
-  (done.length?`<div class="sec">Back</div><div class="list">${done.slice(-8).reverse().map(x=>`<div class="row"><span class="v txt">${esc(x.name)}<small>${tm(x.ts)} – ${tm(x.back)}</small></span>${chip("good",Math.round((new Date(x.back)-new Date(x.ts))/60000)+" min")}</div>`).join("")}</div>`:"");
+  body=(on.length?`<div class="list">${on.map(x=>`<div class="row"><span class="v txt">${esc(x.name)}<small>out ${tm(x.ts)}</small></span><span class="chip" data-since="${esc(x.ts)}"></span><button class="btn" data-back="${esc(x.id)}">Back</button>${delBtn("breaks",x.id)}</div>`).join("")}</div>`:empty("No one on break right now. Type a first name below and tap Start."))+
+  doneTog(done.length)+(done.length&&SHOWDONE?`<div class="sec">Back</div><div class="list">${done.slice(-8).reverse().map(x=>`<div class="row"><span class="v txt">${esc(x.name)}<small>${tm(x.ts)} – ${tm(x.back)}</small></span>${chip("good",Math.round((new Date(x.back)-new Date(x.ts))/60000)+" min")}${delBtn("breaks",x.id)}</div>`).join("")}</div>`:"");
   bar=`<input id="bn" placeholder="First name" aria-label="First name"><button class="btn primary" data-act="brk">Start</button>`}
- if(sub==="checklist"){body=rows.length?`<div class="list">${rows.map(x=>chkRow(x,"data-chk")).join("")}</div>`:empty("No checklist items for this shift. Add one below.");
+ if(sub==="checklist"){body=chkList("data-chk","No checklist items for this shift. Add one below.");
   bar=`<input id="ci" placeholder="Checklist item" aria-label="Checklist item"><button class="btn primary sq" data-act="chk" aria-label="Add">${I("plus")}</button>`}
- if(sub==="fixes"){body=rows.length?`<div class="list">${rows.map(x=>chkRow(x,"data-fix")).join("")}</div>`:empty("No quick fixes listed. Add one below (bigger repairs go in Tools › Equipment).");
+ if(sub==="fixes"){body=chkList("data-fix","No quick fixes listed. Add one below (bigger repairs go in Tools › Equipment).");
   bar=`<input id="fi" placeholder="Fix to do" aria-label="Fix"><button class="btn primary sq" data-act="fix" aria-label="Add">${I("plus")}</button>`}
  if(sub==="handoff"){body=rows.length?`<div class="list">${rows.slice(-10).reverse().map(x=>`<div class="row" style="display:block;padding:12px 0"><div class="note-ts">${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${esc(x.note)}</div>`).join("")}</div>`:empty("No handoff notes yet. Leave one for the next manager below.");
   bar=`<input id="hn" placeholder="Note for next manager" aria-label="Note"><button class="btn primary sq" data-act="hand" aria-label="Save note">${I("plus")}</button>`}
@@ -327,17 +328,19 @@ S.waste=async()=>{const TS=within(toolSync(),2000,null);const lp=Floor.list("was
  <div class="card stack"><div class="lbl">Log waste</div><div class="quick">${quick}</div>
  <div style="display:flex;gap:8px"><input id="wi" placeholder="Item" aria-label="Item"><input id="wq" type="number" inputmode="decimal" value="1" aria-label="Quantity" style="max-width:30%"></div>
  ${pick("reason",REASONS,PICK.reason)}<button class="btn primary block" data-act="waste">Log it</button></div>
- <div class="sec">Today's log</div>${today.length?`<div class="list">${today.slice().reverse().map(x=>`<div class="row"><span class="t">${clock(x.time,1)}</span><span class="v txt">${esc(x.qty)} × ${esc(x.item)}</span>${chip("neutral",x.reason)}</div>`).join("")}</div>`:empty("Nothing wasted yet today")}`+store("waste")};
+ <div class="sec">Today's log</div>${today.length?`<div class="list">${today.slice().reverse().map(x=>`<div class="row"><span class="t">${clock(x.time,1)}</span><span class="v txt">${esc(x.qty)} × ${esc(x.item)}</span>${chip("neutral",x.reason)}${delBtn("waste",x.id)}</div>`).join("")}</div>`:empty("Nothing wasted yet today")}`+store("waste")};
+const delBtn=(k,id)=>`<button class="btn sq" type="button" data-del="${esc(k)}" data-id="${esc(id)}" aria-label="Delete">${I("trash")}</button>`;
+let SHOWDONE=false;const doneTog=n=>n?`<button class="btn" type="button" data-showdone="1" style="align-self:flex-start">${SHOWDONE?"Hide done":"Show done ("+n+")"}</button>`:"";
 const EQS={"open":["bad","Open"],"in progress":["warn","In progress"],"fixed":["good","Fixed"]};
 S.equipment=async()=>{const TS=within(toolSync(),2000,null);const rows=(await blist("equipment","equipment")).slice().reverse();
  const ord=x=>({open:0,"in progress":1,fixed:2}[x.status]??0);rows.sort((a,b)=>ord(a)-ord(b));const open=rows.filter(x=>x.status!=="fixed").length;
  await TS;return back+oldCard("equipment")+lateNote("equipment")+`<div class="card stack"><div class="lbl">Report an issue${chip(open?"warn":"good",open?open+" open":"All fixed")}</div>
  <input id="eqe" placeholder="Equipment (e.g. Fry vat 2)" aria-label="Equipment"><input id="eqi" placeholder="What's wrong" aria-label="Issue"><input id="eqr" placeholder="Reported by (first name)" aria-label="Reported by">
  <button class="btn primary block" data-act="eq">Report</button></div>
- ${rows.length?`<div class="list">${rows.map(x=>{const [s,w]=EQS[x.status]||EQS.open;return `<details><summary class="row"><span class="v txt">${esc(x.equipment)}<small>${esc(x.issue)}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
+ ${doneTog(rows.length-open)}${rows.length?`<div class="list">${rows.filter(x=>SHOWDONE||x.status!=="fixed").map(x=>{const [s,w]=EQS[x.status]||EQS.open;return `<details><summary class="row"><span class="v txt">${esc(x.equipment)}<small>${esc(x.issue)}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
  <div class="det" style="padding-left:0"><div>Reported by <b>${esc(x.reported_by)||"—"}</b> · ${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${x.fixer?`<div>Fixer: <b>${esc(x.fixer)}</b></div>`:""}
  ${x.status==="fixed"?"":`<div class="stack" style="gap:8px;margin-top:8px"><input id="fx${esc(x.id)}" placeholder="Fixer (first name)" value="${esc(x.fixer||"")}" aria-label="Fixer">
- <div style="display:flex;gap:8px">${x.status!=="in progress"?`<button class="btn" style="flex:1" data-eq="${esc(x.id)}" data-st="in progress">In progress</button>`:""}<button class="btn primary" style="flex:1" data-eq="${esc(x.id)}" data-st="fixed">Fixed</button></div></div>`}</div></details>`}).join("")}</div>`:empty("No equipment issues")}`+store("equipment")};
+ <div style="display:flex;gap:8px">${x.status!=="in progress"?`<button class="btn" style="flex:1" data-eq="${esc(x.id)}" data-st="in progress">In progress</button>`:""}<button class="btn primary" style="flex:1" data-eq="${esc(x.id)}" data-st="fixed">Fixed</button></div></div>`}<div style="margin-top:8px">${delBtn("equipment",x.id)}</div></div></details>`}).join("")}</div>`:empty("No equipment issues")}`+store("equipment")};
 const NTYPES=["training","ready to promote","call-out","praise"];const NST={"training":"neutral","ready to promote":"good","call-out":"warn","praise":"good"};
 S.crewnotes=async()=>{const TS=within(toolSync(),2000,null);const rows=(await blist("crewnotes","crewnotes")).slice().reverse();
  await TS;return back+oldCard("crewnotes")+lateNote("crewnotes")+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
@@ -345,7 +348,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),2000,null);const rows=(await bl
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v22";
+const APPVER="v23";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -386,14 +389,19 @@ function tick(){document.querySelectorAll("[data-since]").forEach(el=>{const m=M
  el.className="chip "+(m>=30?"bad":m>=25?"warn":"good");el.textContent=m+" min"})}
 // Stale-while-revalidate: paint the last HTML for this screen at once, then swap in fresh HTML if it changed.
 // seq guards against a slow load overwriting a screen the user has already left.
-const VIEW={};let seq=0,shown="";
+const VIEW={};let seq=0,shown="",DEFER="";
+// Never redraw a form under the user's fingers: if an input is focused or edited, hold the repaint until it's done.
+const editing=()=>{const a=document.activeElement;if(a&&app.contains(a)&&a.matches("input:not([type=checkbox]),textarea"))return true;
+ return [...app.querySelectorAll("input:not([type=checkbox]):not([type=password]),textarea")].some(i=>i.value!==i.defaultValue)};
+app.addEventListener("focusout",()=>setTimeout(()=>{if(DEFER&&DEFER===cur&&!editing()){DEFER="";show(cur)}},150));
 const FOCUS={home:["Brief","Labor","Roster","Meta"],whoson:["Roster","Meta"],labor:["Labor","Brief","Meta"],rushes:["Events","Speed","Meta"],speed:["Speed","Meta"],guest:["SMG","Comments","Brief","Meta"],tools:["Brief","Meta"]};
-async function show(s,o={}){const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,moved=shown!==vk;cur=s;shown=vk;
+async function show(s,o={}){try{window.FloorSync&&window.FloorSync()}catch(e){}const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,moved=shown!==vk;cur=s;shown=vk;
  try{ShiftData.setFocus(s==="floor"?[floorSub,"Roster","Brief","Meta"]:FOCUS[s]||[s,"Brief","Meta"])}catch(e){}$("#title").textContent=TITLE[s];
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
  const had=!o.fresh&&VIEW[vk];if(had)app.innerHTML=VIEW[vk];else if(moved||o.fresh)app.innerHTML=empty("Loading…");
  if(moved)scrollTop_(s);
- try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(h!==VIEW[vk]||!had){const keep=moved?{}:Object.fromEntries([...app.querySelectorAll("input[id]:not([type=checkbox]):not([type=password])")].filter(i=>i.value).map(i=>[i.id,i.value]));app.innerHTML=h;for(const id in keep){const el=document.getElementById(id);if(el&&!el.value)el.value=keep[id]}VIEW[vk]=h;if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[vk];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
+ try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(!moved&&!o.force&&editing()){VIEW[vk]=h;DEFER=s;repill(s);return}
+  if(h!==VIEW[vk]||!had){const keep=moved?{}:Object.fromEntries([...app.querySelectorAll("input[id]:not([type=checkbox]):not([type=password])")].filter(i=>i.value).map(i=>[i.id,i.value]));app.innerHTML=h;for(const id in keep){const el=document.getElementById(id);if(el&&!el.value)el.value=keep[id]}VIEW[vk]=h;if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[vk];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
 }
 // Pill + Last synced always reflect the screen on show, even if another screen's late load touched them.
@@ -410,7 +418,11 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  const pk=e.target.closest("[data-pick]");if(pk){const g=pk.parentElement.dataset.group;PICK[g]=pk.dataset.pick;pk.parentElement.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===pk));return}
  const fl=e.target.closest("[data-fill]");if(fl){$("#"+fl.dataset.fill).value=fl.dataset.v;$("#wq").focus();return}
  const sb=e.target.closest("[data-sub]");if(sb){floorSub=sb.dataset.sub==="notes"?"handoff":sb.dataset.sub;show("floor");return}
+ const sd=e.target.closest("[data-showdone]");if(sd){SHOWDONE=!SHOWDONE;show(cur,{force:1});return}
+ const dl=e.target.closest("[data-del]");if(dl){if(!confirm("Delete this entry?"))return;dl.disabled=true;try{await window.Floor.remove(dl.dataset.del,dl.dataset.id)}catch(err){alert("Could not delete: "+err.message)}show(cur,{force:1});return}
  const t=e.target.closest("button,input")||e.target,F=window.Floor,v=id=>($("#"+id)||{}).value?.trim();
+ if(t.tagName==="BUTTON"&&t.dataset.act){if(t.dataset.busy)return;t.dataset.busy="1";t.disabled=true;setTimeout(()=>{t.disabled=false;delete t.dataset.busy},1500)}
+ const clr=()=>app.querySelectorAll(".addbar input,.card.stack input").forEach(i=>{if(!/^fx/.test(i.id))i.value=""});
  try{const a=t.dataset.act;
  if(a==="key"){if(!v("k")){$("#k").focus();return}ShiftData.Key.set(v("k"));meta=null;KEYJUST=true;for(const k in VIEW)delete VIEW[k];await show("settings",{fresh:1});KEYJUST=false;return}
  if(a==="ping"){const o=$("#pingres");o.textContent="Checking…";try{const r=await ShiftData.ping();o.textContent=r.ok?"Script OK · compatible (script "+(r.version||"?")+")":"Script problem: "+r.error}catch(e){o.textContent="Couldn't reach the script ("+e.message+")"}return}
@@ -421,11 +433,11 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  else if(a==="chk"&&v("ci"))await F.add("checklist",{item:v("ci")});
  else if(a==="fix"&&v("fi"))await F.add("fixes",{item:v("fi")});
  else if(a==="hand"&&v("hn"))await F.add("handoff",{note:v("hn")});
- else if(a==="inv"){const i=t.dataset.i,q=v("ioh"+i),p=v("ipar"+i);if(!q&&!p)return;await F.add("inventory",{item:t.dataset.item,unit:t.dataset.unit,on_hand:q||"",par:p||t.dataset.par||""});show("inventory");return}
- else if(a==="invnew"&&v("ini")){await F.add("inventory",{item:v("ini"),unit:v("inu")||"",on_hand:"",par:v("inp")||""});show("inventory");return}
- else if(a==="waste"&&v("wi")){const w=nowT();await F.add("waste",{date:w.date,time:w.time,item:v("wi"),qty:v("wq")||"1",reason:PICK.reason});show("waste");return}
- else if(a==="eq"&&v("eqe")){await F.add("equipment",{equipment:v("eqe"),issue:v("eqi")||"",reported_by:first(v("eqr")),status:"open",fixer:"",updated:new Date().toISOString()});show("equipment");return}
- else if(t.dataset.eq){await F.update("equipment",t.dataset.eq,{status:t.dataset.st,fixer:first(v("fx"+t.dataset.eq)),updated:new Date().toISOString()});show("equipment");return}
+ else if(a==="inv"){const i=t.dataset.i,q=v("ioh"+i),p=v("ipar"+i);if(!q&&!p)return;await F.add("inventory",{item:t.dataset.item,unit:t.dataset.unit,on_hand:q||"",par:p||t.dataset.par||""});clr();show("inventory",{force:1});return}
+ else if(a==="invnew"&&v("ini")){await F.add("inventory",{item:v("ini"),unit:v("inu")||"",on_hand:"",par:v("inp")||""});clr();show("inventory",{force:1});return}
+ else if(a==="waste"&&v("wi")){const w=nowT();await F.add("waste",{date:w.date,time:w.time,item:v("wi"),qty:v("wq")||"1",reason:PICK.reason});clr();show("waste",{force:1});return}
+ else if(a==="eq"&&v("eqe")){await F.add("equipment",{equipment:v("eqe"),issue:v("eqi")||"",reported_by:first(v("eqr")),status:"open",fixer:"",updated:new Date().toISOString()});clr();show("equipment",{force:1});return}
+ else if(t.dataset.eq){await F.update("equipment",t.dataset.eq,{status:t.dataset.st,fixer:first(v("fx"+t.dataset.eq)),updated:new Date().toISOString()});clr();show("equipment",{force:1});return}
  else if(a==="cn"&&v("cnn")&&v("cnt")){const row={date:nowT().date,first_name:first(v("cnn")),type:PICK.ntype,note:v("cnt")};
   // Accepted on this phone first (shows "Pending sync" at once), then sent in the background; the form clears only after that.
   const saved=await F.add("crewnotes",row);if($("#cnn"))$("#cnn").value="";if($("#cnt"))$("#cnt").value="";
@@ -433,14 +445,15 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
   try{const pe=document.createElement("div");pe.className="row";pe.style.cssText="display:block;padding:12px 0";
    pe.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(row.first_name)}</b>${chip(NST[row.type]||"neutral",row.type)}</div><div>${esc(row.note)}</div><div class="note-ts">${esc(row.date)} ${chip("warn","Pending sync")}</div>`;
    let L=document.querySelector("#app .list");if(!L){const em=document.querySelector("#app .empty");L=document.createElement("div");L.className="list";if(em)em.replaceWith(L);else $("#app").append(L)}L.prepend(pe);VIEW.crewnotes=app.innerHTML}catch(e){}
-  if(cur==="crewnotes")show("crewnotes");return}
- else if(t.dataset.cndel){if(!confirm("Delete this crew note?"))return;await F.remove("crewnotes",t.dataset.cndel);show("crewnotes");return}
+  if(cur==="crewnotes")clr();show("crewnotes",{force:1});return}
+ else if(t.dataset.cndel){if(!confirm("Delete this crew note?"))return;await F.remove("crewnotes",t.dataset.cndel);clr();show("crewnotes",{force:1});return}
  else if(t.dataset.back)await F.update("breaks",t.dataset.back,{back:new Date().toISOString()});
  else if(t.dataset.chk)await F.update("checklist",t.dataset.chk,{done:t.checked});
  else if(t.dataset.fix)await F.update("fixes",t.dataset.fix,{done:t.checked});
- else return;show("floor")}catch(err){alert("Could not save: "+err.message+(/no doGet|no doPost/.test(err.message)?". Ask your GM to paste the full Code.gs and deploy a new version.":""))}});
+ else return;clr();show("floor",{force:1})}catch(err){alert("Could not save: "+err.message+(/no doGet|no doPost/.test(err.message)?". Ask your GM to paste the full Code.gs and deploy a new version.":""))}});
 app.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".addbar input, #k")){const b=e.target.parentElement.querySelector("[data-act]");if(b)b.click()}});
 $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
+setInterval(()=>{if(DEFER&&DEFER===cur&&!editing()){DEFER="";show(cur)}},4000);
 window.addEventListener("shifthub:floorsync",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["floor","inventory","waste","equipment","crewnotes"].includes(cur))show(cur)});
 window.addEventListener("shifthub:data",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools"].includes(cur))show(cur)});
 setSrc(false);show("home");

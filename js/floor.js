@@ -54,10 +54,13 @@ function shared(W){const MEMO={},FL={},RECENT={},DAY=864e5,SK=k=>"shifthub_share
  const flush=async k=>{if(FL[k]||OLD.has(k)||k==="positions"||navigator.onLine===false)return;FL[k]=1;let n=0;
   try{for(const x of await LocalAdapter.list(k)){if(Date.now()-Date.parse(x.ts||0)>DAY)continue;
    const row=Object.assign({},x);delete row.id;delete row.ts;delete row._pending;
-   try{const got=norm(await W.add(k,row));if(OLD.has(k))break;(RECENT[k]=RECENT[k]||[]).push(Object.assign({},got,{_at:Date.now()}));
+   try{const got=norm(await W.add(k,row));if(OLD.has(k)){if(got&&got.id)await LocalAdapter.remove(k,got.id);break}(RECENT[k]=RECENT[k]||[]).push(Object.assign({},got,{_at:Date.now()}));
     if(MEMO[k])MEMO[k].v.push(got);await LocalAdapter.remove(k,x.id);n++;emit(k)}catch(e){break}}}finally{FL[k]=0}return n};
  const flushAll=()=>{if(!ShiftData.Key.get())return;Object.keys(localStorage).filter(x=>x.startsWith("shifthub_floor_")).map(x=>x.slice(15)).forEach(k=>{if(k!=="positions")flush(k)})};
- window.addEventListener("online",flushAll);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")flushAll()});
+ window.addEventListener("online",()=>{flushAll();setTimeout(flushAll,3000)});window.FloorSync=flushAll;
+ // DevTools/OS may not fire "online": retry every 15s while anything is pending.
+ setInterval(()=>{if(navigator.onLine!==false&&Object.keys(localStorage).some(x=>x.startsWith("shifthub_floor_")&&x!=="shifthub_floor_positions"&&localStorage.getItem(x)!=="[]"))flushAll()},15000);
+ window.addEventListener("shifthub:data",()=>flushAll());document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")flushAll()});
  return {name:W.name,place:r=>W.place(r),flush,
   async list(k){if(k==="positions")return W.list(k);const m=MEMO[k];
    if(m&&Date.now()-m.t<20000)return withRecent(k,m.v).concat(await pend(k));
