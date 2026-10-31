@@ -10,3 +10,4 @@ nav button{flex:1;min-height:64px;border:0;background:none;font-size:13px}nav bu
 button.big,input,select,textarea{min-height:48px;font-size:16px;border-radius:10px;border:1px solid #ccc;padding:8px;width:100%;margin:4px 0}
 button.big{background:#da291c;color:#fff;border:0}.row{display:flex;gap:8px}.row>*{flex:1}
 li{margin:6px 0}label.chk{display:flex;align-items:center;gap:10px;min-height:44px}label.chk input{width:28px;min-height:28px}
+#gear{min-width:44px;min-height:44px;font-size:22px;background:none;border:0}#keybanner{background:#ffc72c;padding:12px 16px;font-weight:600;min-height:48px}

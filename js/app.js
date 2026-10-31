@@ -32,21 +32,26 @@ async guest(){const r=await get("SMG");const f=r.find(x=>x.coaching_focus);
  card("🎯 Coaching focus",esc(f?f.coaching_focus:"—"))+card("Low-score comments",`<ul>${r.filter(x=>x.low_score_comment_names_removed).map(x=>`<li><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</li>`).join("")}</ul>`)},
 async floor(){const F=window.Floor;const L=k=>F.list(k);
  const [pos,brk,chk,fix,hand]=await Promise.all(["positions","breaks","checklist","fixes","handoff"].map(L));
- const keyUI=F.key?`<input id="k" type="password" placeholder="Shared key (saved on this phone)"><button class="big" data-act="key">Save key</button>`:"";
- return card("Storage: "+esc(F.name),keyUI)+
+ return card("Storage: "+esc(F.name),ShiftData.live()?"":"<p>Entries stay on this phone until the shared key is set (⚙️).</p>")+
  card("Positioning board",`<ul>${pos.map(x=>`<li><b>${esc(x.position)}</b>: ${esc(x.name)}</li>`).join("")}</ul><div class="row"><input id="pp" placeholder="Position"><input id="pn" placeholder="First name"></div><button class="big" data-act="pos">Add</button>`)+
  card("Break tracker",`<ul>${brk.map(x=>`<li>${esc(x.name)} — out ${new Date(x.ts).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})} ${x.back?"✅ back":`<button data-back="${esc(x.id)}">Back</button>`}</li>`).join("")}</ul><input id="bn" placeholder="First name"><button class="big" data-act="brk">Start break</button>`)+
  card("Shift checklist",`${chk.map(x=>`<label class="chk"><input type="checkbox" data-chk="${esc(x.id)}" ${x.done?"checked":""}>${esc(x.item)}</label>`).join("")}<input id="ci" placeholder="Checklist item"><button class="big" data-act="chk">Add item</button>`)+
  card("Fix to-do",`${fix.map(x=>`<label class="chk"><input type="checkbox" data-fix="${esc(x.id)}" ${x.done?"checked":""}>${esc(x.item)}</label>`).join("")}<input id="fi" placeholder="Fix (e.g. from bots' top 3)"><button class="big" data-act="fix">Add fix</button>`)+
  card("Handoff notes",`<ul>${hand.slice(-10).reverse().map(x=>`<li><span class="upd">${new Date(x.ts).toLocaleString()}</span><br>${esc(x.note)}</li>`).join("")}</ul><textarea id="hn" placeholder="Note for next manager"></textarea><button class="big" data-act="hand">Save note</button>`)}
 };
+S.settings=async()=>card("⚙️ Settings",`<p>Shared key: <b>${ShiftData.Key.get()?"saved on this phone":"not set"}</b></p>
+ <p>Data link: <b>${ShiftData.hasUrl()?"set":"not set yet"}</b></p>
+ <input id="k" type="password" autocomplete="off" placeholder="Enter shared key"><button class="big" data-act="key">Save key</button>
+ <button class="big" data-act="clearkey" style="background:#666">Remove key from this phone</button>`);
+function banner(){const b=$("#keybanner");if(ShiftData.Key.get()){b.hidden=true;return}b.hidden=false}
 let cur="home";
 async function show(s){cur=s;document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.s===s));
  app.innerHTML="<p>Loading…</p>";try{app.innerHTML=await S[s]()}catch(e){app.innerHTML=card("Error",esc(e.message))}}
 $("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)show(b.dataset.s)};
 app.addEventListener("click",async e=>{const t=e.target,F=window.Floor,v=id=>($("#"+id)||{}).value?.trim();
  try{const a=t.dataset.act;
- if(a==="key"){localStorage.setItem("shifthub_key",v("k")||"");t.textContent="Saved ✓";return}
+ if(a==="key"){ShiftData.Key.set(v("k"));meta=null;banner();show("home");return}
+ if(a==="clearkey"){ShiftData.Key.set("");meta=null;banner();show("settings");return}
  if(a==="pos"&&v("pp"))await F.add("positions",{position:v("pp"),name:v("pn")});
  else if(a==="brk"&&v("bn"))await F.add("breaks",{name:v("bn")});
  else if(a==="chk"&&v("ci"))await F.add("checklist",{item:v("ci")});
@@ -56,6 +61,7 @@ app.addEventListener("click",async e=>{const t=e.target,F=window.Floor,v=id=>($(
  else if(t.dataset.chk)await F.update("checklist",t.dataset.chk,{done:t.checked});
  else if(t.dataset.fix)await F.update("fixes",t.dataset.fix,{done:t.checked});
  else return;show("floor")}catch(err){alert("Could not save: "+err.message)}});
-show("home");
+$("#gear").onclick=()=>show("settings");$("#keybanner").onclick=()=>show("settings");
+banner();show("home");
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();

@@ -1,8 +1,4 @@
-// Shift Hub config. Paste each tab's "Publish to web" CSV URL here (File > Share > Publish to web > tab > CSV).
-// Leave blank to use bundled sample data in data/sample/.
-window.SHIFTHUB_CONFIG = {
-  csv: { Brief: "", Labor: "", Events: "", Speed: "", SMG: "", Meta: "" },
-  // Floor tools storage: "local" (this phone only) or "appsscript" (shared, after Travis deploys apps-script/Code.gs).
-  floorAdapter: "local",
-  appsScriptUrl: "" // Web app URL ending in /exec. The shared key is NOT stored here; managers enter it in Floor > Settings.
-};
+// Shift Hub config. Paste the Apps Script web app URL (ends in /exec) below.
+// The shared key is NOT stored here: each manager enters it once in the app (Settings banner) and it stays on their phone.
+// With no URL or no key, the app shows bundled sample data.
+window.SHIFTHUB_CONFIG = { appsScriptUrl: "" };

@@ -1,2 +1,2 @@
 # Shift Hub
-Mobile-first static PWA for shift managers. No build step. Data: published-CSV URLs in `config.js` (falls back to `data/sample/*.json`, all EXAMPLE data). Floor tools: localStorage by default; shared via `apps-script/Code.gs` (see APPS_SCRIPT_STEPS.md).
+Mobile-first static PWA for shift managers. No build step. Data and shared Floor tools come from the Apps Script web app in `apps-script/Code.gs` (URL in `config.js`, key entered on each phone). Without both it shows `data/sample/*.json` (EXAMPLE data). See APPS_SCRIPT_STEPS.md.
