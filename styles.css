@@ -100,3 +100,7 @@ input:focus,textarea:focus,button:focus-visible,summary:focus-visible{outline:2p
 .card.tool{display:flex;align-items:center;gap:14px;min-height:72px}.card.tool>.ic:first-child{color:var(--accent)}.card.tool>span{flex:1;min-width:0}.card.tool b{display:block;font-size:17px}
 .quick{display:flex;flex-wrap:wrap;gap:8px}.quick .btn{flex:1 1 30%;padding:0 8px}
 .seg[data-group] button{min-height:44px;white-space:normal;line-height:15px}
+.upd:empty{display:none}
+button.alert{width:100%;text-align:left;font:inherit;border:0;border-left:4px solid var(--bad);cursor:pointer;min-height:var(--tap)}
+.pill.bad::before{background:var(--bad-bg);color:#B91C1C}
+.err{margin:0;padding:10px 12px;border-radius:12px;background:var(--bad-bg);color:#B91C1C;font-size:14px;line-height:20px}

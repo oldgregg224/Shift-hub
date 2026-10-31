@@ -21,16 +21,26 @@ function status(v,t,kind){if(isNaN(v))return "neutral";const d=v-t;switch(kind){
  case "count":return v<=0?"good":v<=2?"warn":"bad"}}
 const listCount=s=>{s=String(s??"").replace(/^EXAMPLE:\s*/i,"").trim();if(!s||/^(none|0|—|-)$/i.test(s))return 0;const x=Number(s);return isNaN(x)?s.split(/[,;]/).filter(z=>z.trim()).length:x};
 const kpi=(lbl,val,meta,st,word,go,sm)=>`<button class="card" type="button" ${go?`data-go="${go}"`:""}><div class="lbl">${esc(lbl)}${st&&st!=="neutral"?chip(st,word):""}</div><div class="hero${sm?" sm":""}">${val}</div>${meta?`<div class="meta">${esc(meta)}</div>`:""}</button>`;
+// "1 cases" -> "1 case"
+const qu=(q,u)=>{u=String(u||"");return q+" "+(Math.abs(n(q))===1&&/[^s]s$/i.test(u)?u.replace(/es$/i,m=>/(box|sh|ch)es$/i.test(u)?"":"e").replace(/s$/i,""):u)};
 const empty=t=>`<p class="empty">${esc(t)}</p>`;
 
 let meta=null;
-async function setUpd(tab,rows){try{if(!meta)meta=(await ShiftData.load("Meta")).rows}catch(e){meta=[]}
+async function setUpd(tab,rows,live){if(live===false){$("#upd").textContent="Sample data · not live";return}try{if(!meta)meta=(await ShiftData.load("Meta")).rows}catch(e){meta=[]}
  const m=meta.find(x=>x.tab===tab);const v=(m&&m.last_updated)||(rows[0]&&rows[0].last_updated)||"";
  const d=new Date(v);$("#upd").textContent=v?"Updated "+(isNaN(d)?v:d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})):""}
-function setSrc(live){const p=$("#src");p.classList.toggle("live",live);
- const has=!!ShiftData.Key.get();p.dataset.label=live?"Live":(has?"Sample · check key":"Sample · add key");
- p.setAttribute("aria-label",(live?"Live data":"Sample data")+". Open settings")}
-async function get(tab){const r=await ShiftData.load(tab);setSrc(r.live);await setUpd(tab,r.rows);return r.rows}
+const keyMsg=()=>({key:"Key didn't work, using sample data",net:"Couldn't reach live data, using sample data"})[ShiftData.status.bad]||"";
+function setSrc(live){const p=$("#src");p.classList.toggle("live",live);const bad=ShiftData.status.bad;p.classList.toggle("bad",!!bad);
+ const has=!!ShiftData.Key.get();p.dataset.label=live?"Live":bad==="key"?"Key didn't work":bad?"Offline · sample":(has?"Sample · check key":"Sample · add key");
+ p.setAttribute("aria-label",(live?"Live data":keyMsg()||"Sample data")+". Open settings")}
+const keyAlert=()=>keyMsg()?`<button class="alert" type="button" data-go="settings">${I("siren")}<div><b>${esc(keyMsg())}</b><span>Tap to check the key in Settings</span></div></button>`:"";
+let LIVE=false;
+async function get(tab){const r=await ShiftData.load(tab);LIVE=r.live;setSrc(r.live);await setUpd(tab,r.rows,r.live);return r.rows}
+// "Now" row: live = latest row; sample = row for the current clock hour, clamped to the sample's range.
+function nowRow(r){if(LIVE)return{x:r[r.length-1],lbl:"Now · "+clock(r[r.length-1].hour)};
+ const h=new Date().getHours(),hs=r.map(x=>parseInt(x.hour,10));let i=hs.findIndex(v=>v===h);
+ if(i<0)i=h<Math.min(...hs)?hs.indexOf(Math.min(...hs)):hs.reduce((b,v,j)=>v<=h&&v>=hs[b]?j:b,hs.indexOf(Math.min(...hs)));
+ const x=r[i],exact=hs[i]===h;return{x,lbl:(exact?"Now · ":"Sample · ")+clock(x.hour)+(exact?" · sample":" (closest hour)")}}
 
 async function whoHome(){try{const {rows}=await roster(),now=shiftNow();const sr=rows.filter(x=>x.date===now.date&&x.shift===now.shift);if(!sr.length)return "";
  const m=sr.filter(x=>String(x.role).toLowerCase()==="manager").map(x=>first(x.first_name)).join(", ")||"—",c=sr.length-sr.filter(x=>String(x.role).toLowerCase()==="manager").length;
@@ -41,7 +51,7 @@ async home(){const r=await get("Brief"),b=r[0]||{};
  const ss=status(sa,sp,"sales"),ls=status(la,lp,"labor");
  const ot=listCount(b.overtime_watch_first_names),od=listCount(b.overdue_checklists),cm=n(b.new_smg_comment_count)||0,hr=n(b.open_harri_requests)||0;
  const rush=b.rush_banner?`<div class="alert">${I("siren")}<div><b>${esc(b.rush_banner)}</b><span>Rush today</span></div></div>`:"";
- return rush+
+ return keyAlert()+rush+
  kpi("Sales",money(sa),"of "+money(sp)+" projected",ss,(isNaN(sa-sp)?"":(sa-sp<0?"−":"+")+money(Math.abs(sa-sp))+" · ")+({good:"Ahead",warn:"Behind",bad:"Behind"}[ss]||""),null)+
  kpi("Labor",pct(la),"target "+pct(lp),ls,(isNaN(la-lp)?"":sgn(la-lp,1)+" · ")+({good:"On target",warn:"Watch",bad:"Over"}[ls]||""),"labor")+
  `<div class="grid">`+
@@ -52,8 +62,8 @@ async home(){const r=await get("Brief"),b=r[0]||{};
 
 async labor(){const r=await get("Labor");if(!r.length)return empty("No labor data yet");
  const callSt=c=>{c=String(c||"").toUpperCase();return c.includes("EARLY")?"bad":c.includes("HOLD")?"warn":"good"};
- const cur=r[r.length-1],cl=n(cur.labor_pct),ct=n(cur.target_pct)||21.5,cs=status(cl,ct,"labor");
- return `<div class="card"><div class="lbl">Now · ${clock(cur.hour)}${chip(cs,sgn(cl-ct,1)+" · "+WORD[cs])}</div><div class="hero">${pct(cl)}</div>
+ const N=nowRow(r),cur=N.x,cl=n(cur.labor_pct),ct=n(cur.target_pct)||21.5,cs=status(cl,ct,"labor");
+ return `<div class="card"><div class="lbl">${N.lbl}${chip(cs,sgn(cl-ct,1)+" · "+WORD[cs])}</div><div class="hero">${pct(cl)}</div>
  <div class="meta" style="display:flex;align-items:center;gap:8px">target ${pct(ct)} ${cur.call?chip(callSt(cur.call),cur.call):""}</div></div>
  <div class="sec">By hour</div><div class="list">${r.map(x=>{const l=n(x.labor_pct),t=n(x.target_pct)||21.5;
  return `<details><summary class="row"><span class="t">${clock(x.hour,1)}</span><span class="v">${pct(l)}<small>${esc(x.actual_hours)} of ${esc(x.cap_hours)} hrs · ${chip(status(l,t,"labor")).replace(/<[^>]+>/g,"")}</small></span>${x.call?chip(callSt(x.call),x.call):""}${I("chevron-down","cv")}</summary>
@@ -71,9 +81,9 @@ async rushes(){const r=await get("Events");const d0=new Date(),today=`${d0.getFu
 
 async speed(){const r=await get("Speed");if(!r.length)return empty("No speed data yet");
  const st=x=>x.slow_flag==="Y"?"bad":status(n(x.oepe_sec),n(x.last_week_oepe_sec),"oepe");
- const cur=r[r.length-1],cd=n(cur.oepe_sec)-n(cur.last_week_oepe_sec);
+ const N=nowRow(r),cur=N.x,cd=n(cur.oepe_sec)-n(cur.last_week_oepe_sec);
  const tips=r.filter(x=>x.pre_rush_positioning_note);
- return `<div class="card"><div class="lbl">Now · ${clock(cur.hour)}${chip(st(cur),isNaN(cd)?WORD[st(cur)]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(n(cur.oepe_sec))}</div><div class="meta">OEPE · last week ${mmss(n(cur.last_week_oepe_sec))}</div></div>`+
+ return `<div class="card"><div class="lbl">${N.lbl}${chip(st(cur),isNaN(cd)?WORD[st(cur)]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(n(cur.oepe_sec))}</div><div class="meta">OEPE · last week ${mmss(n(cur.last_week_oepe_sec))}</div></div>`+
  tips.map(x=>`<div class="tip">${I("lightbulb")}<span>${esc(x.pre_rush_positioning_note)}</span></div>`).join("")+
  `<div class="sec">OEPE by hour</div><div class="list">${r.map(x=>{const d=n(x.oepe_sec)-n(x.last_week_oepe_sec),s=st(x),o=n(x.order_sec)||0,c=n(x.cash_sec)||0,w=n(x.second_window_sec)||0;
  return `<details><summary class="row"><span class="t">${clock(x.hour,1)}</span><span class="v">${mmss(n(x.oepe_sec))}<small>LW ${mmss(n(x.last_week_oepe_sec))} · total ${mmss(n(x.total_time_sec))}</small></span>${chip(s,(isNaN(d)?"":sgn(d)+"s ")+(s==="bad"?"Slow":s==="warn"?"Watch":""))}${I("chevron-down","cv")}</summary>
@@ -93,17 +103,23 @@ async floor(){$("#upd").textContent="";const F=window.Floor;const sub=floorSub;
  const tm=ts=>new Date(ts).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  const chkRow=(x,attr)=>`<label class="chk"><input type="checkbox" ${attr}="${esc(x.id)}" ${x.done?"checked":""}><span class="box">${I("check")}</span><span>${esc(x.item)}</span></label>`;
  let body="",bar="";
- if(sub==="positions"){body=rows.length?`<div class="list">${rows.map(x=>`<div class="row"><span class="v txt">${esc(x.position)}</span><span>${esc(x.name)}</span></div>`).join("")}</div>`:empty("No one positioned yet");
-  bar=`<input id="pp" placeholder="Position" aria-label="Position"><input id="pn" placeholder="First name" aria-label="First name" style="max-width:40%"><button class="btn primary sq" data-act="pos" aria-label="Add">${I("plus")}</button>`}
+ if(sub==="positions"){const now=shiftNow(),sl=(SHIFTS.find(x=>x[0]===now.shift)||[])[1];
+  const today=rows.filter(x=>!x.date||x.date===now.date&&(!x.shift||x.shift===now.shift));
+  const placed={};today.forEach(x=>placed[String(x.name).toLowerCase()]=x.position);
+  let crew=[];try{crew=(await roster()).rows.filter(x=>x.date===now.date&&x.shift===now.shift&&String(x.role).toLowerCase()!=="manager")}catch(e){}
+  body=(today.length?`<div class="sec">Placed now</div><div class="list">${today.map(x=>`<div class="row"><span class="v txt">${esc(x.position)}</span><b>${esc(first(x.name))}</b></div>`).join("")}</div>`:empty("No one placed on this shift yet. Tap Place next to a crew member below."))+
+  `<div class="sec">On the roster · ${esc(sl||"")}</div>`+(crew.length?`<div class="list">${crew.map((x,i)=>{const nm=first(x.first_name),pl=placed[nm.toLowerCase()];
+   return `<div class="row"><span class="v txt">${esc(nm)}<small>${esc(x.position)} · ${clock(x.start,1)}–${clock(x.end,1)}</small></span>${pl?chip("good",pl):""}<button class="btn" type="button" data-place="${esc(nm)}" data-pos="${esc(x.position)}" aria-label="Place ${esc(nm)}">${pl?"Move":"Place"}</button></div>`}).join("")}</div>`:empty("No crew on today's roster for this shift. Add Roster rows in the Sheet, or place someone below."));
+  bar=`<input id="pp" placeholder="Position" aria-label="Position"><input id="pn" placeholder="First name" aria-label="First name" style="max-width:40%"><button class="btn primary sq" data-act="pos" aria-label="Place">${I("plus")}</button>`}
  if(sub==="breaks"){const on=rows.filter(x=>!x.back),done=rows.filter(x=>x.back);
-  body=(on.length?`<div class="list">${on.map(x=>`<div class="row"><span class="v txt">${esc(x.name)}<small>out ${tm(x.ts)}</small></span><span class="chip" data-since="${esc(x.ts)}"></span><button class="btn" data-back="${esc(x.id)}">Back</button></div>`).join("")}</div>`:empty("No one on break"))+
+  body=(on.length?`<div class="list">${on.map(x=>`<div class="row"><span class="v txt">${esc(x.name)}<small>out ${tm(x.ts)}</small></span><span class="chip" data-since="${esc(x.ts)}"></span><button class="btn" data-back="${esc(x.id)}">Back</button></div>`).join("")}</div>`:empty("No one on break right now. Type a first name below and tap Start."))+
   (done.length?`<div class="sec">Back</div><div class="list">${done.slice(-8).reverse().map(x=>`<div class="row"><span class="v txt">${esc(x.name)}<small>${tm(x.ts)} – ${tm(x.back)}</small></span>${chip("good",Math.round((new Date(x.back)-new Date(x.ts))/60000)+" min")}</div>`).join("")}</div>`:"");
   bar=`<input id="bn" placeholder="First name" aria-label="First name"><button class="btn primary" data-act="brk">Start</button>`}
- if(sub==="checklist"){body=rows.length?`<div class="list">${rows.map(x=>chkRow(x,"data-chk")).join("")}</div>`:empty("No checklist items");
+ if(sub==="checklist"){body=rows.length?`<div class="list">${rows.map(x=>chkRow(x,"data-chk")).join("")}</div>`:empty("No checklist items for this shift. Add one below.");
   bar=`<input id="ci" placeholder="Checklist item" aria-label="Checklist item"><button class="btn primary sq" data-act="chk" aria-label="Add">${I("plus")}</button>`}
- if(sub==="fixes"){body=rows.length?`<div class="list">${rows.map(x=>chkRow(x,"data-fix")).join("")}</div>`:empty("No fixes listed");
+ if(sub==="fixes"){body=rows.length?`<div class="list">${rows.map(x=>chkRow(x,"data-fix")).join("")}</div>`:empty("No quick fixes listed. Add one below (bigger repairs go in Tools › Equipment).");
   bar=`<input id="fi" placeholder="Fix to do" aria-label="Fix"><button class="btn primary sq" data-act="fix" aria-label="Add">${I("plus")}</button>`}
- if(sub==="handoff"){body=rows.length?`<div class="list">${rows.slice(-10).reverse().map(x=>`<div class="row" style="display:block;padding:12px 0"><div class="note-ts">${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${esc(x.note)}</div>`).join("")}</div>`:empty("No handoff notes");
+ if(sub==="handoff"){body=rows.length?`<div class="list">${rows.slice(-10).reverse().map(x=>`<div class="row" style="display:block;padding:12px 0"><div class="note-ts">${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${esc(x.note)}</div>`).join("")}</div>`:empty("No handoff notes yet. Leave one for the next manager below.");
   bar=`<input id="hn" placeholder="Note for next manager" aria-label="Note"><button class="btn primary sq" data-act="hand" aria-label="Save note">${I("plus")}</button>`}
  return back+seg+body+store+`<div class="addbar">${bar}</div>`}
 };
@@ -119,7 +135,7 @@ async function roster(){const r=await ShiftData.load("Roster");let rows=r.rows||
  return{rows,live:r.live}}
 const first=s=>String(s||"").trim().split(/\s+/)[0];
 let whoDay=0;
-S.whoson=async()=>{const {rows,live}=await roster();setSrc(live);await setUpd("Roster",rows);
+S.whoson=async()=>{const {rows,live}=await roster();setSrc(live);await setUpd("Roster",rows,live);
  const now=shiftNow(),d=new Date(now.op);d.setDate(d.getDate()+whoDay);const day=ymd(d);
  const seg=`<div class="seg" role="tablist">${["Today","Tomorrow"].map((l,i)=>`<button type="button" role="tab" data-who="${i}" class="${i===whoDay?"on":""}" aria-selected="${i===whoDay}">${l}</button>`).join("")}</div>`;
  const dayRows=rows.filter(x=>x.date===day);
@@ -146,15 +162,15 @@ S.inventory=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const ro
  const items=Object.values(by);
  const usage=o=>{const h=o.hist;if(h.length<2)return "";const a=h[h.length-2],b=h[h.length-1],used=a.q-b.q,days=Math.max((b.t-a.t)/864e5,.01);
   let tot=0,td=0;for(let i=1;i<h.length-1;i++){const u=h[i-1].q-h[i].q,dd=(h[i].t-h[i-1].t)/864e5;if(u>=0&&dd>0){tot+=u;td+=dd}}
-  if(used<0)return `<div><b>Restocked</b> since last count (+${-used} ${esc(o.unit)})</div>`;
-  if(!td)return `<div><b>Used:</b> ${used} ${esc(o.unit)} since last count</div>`;
+  if(used<0)return `<div><b>Restocked</b> since last count (+${esc(qu(-used,o.unit))})</div>`;
+  if(!td)return `<div><b>Used:</b> ${esc(qu(used,o.unit))} since last count</div>`;
   const exp=tot/td*days,diff=used-exp,st=Math.abs(diff)<=Math.max(1,exp*.1)?"good":diff>0?"bad":"warn";
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span><b>Used</b> ${used} vs <b>expected</b> ${exp.toFixed(1)} ${esc(o.unit)}</span>${chip(st,st==="good"?"On track":diff>0?"Over":"Under")}</div>`};
  const st=o=>{const q=o.hist.length?o.hist[o.hist.length-1].q:NaN;if(isNaN(q)||!o.par)return["neutral","Not counted"];return q<o.par*.5?["bad","Low"]:q<o.par?["warn","Below par"]:["good","OK"]};
  const order=items.filter(o=>o.hist.length&&o.par&&o.par-o.hist[o.hist.length-1].q>0);
- return back+(order.length?`<div class="card"><div class="lbl">Order list${chip("warn",order.length+(order.length>1?" items":" item"))}</div>${order.map(o=>`<div class="row"><span class="v txt">${esc(o.item)}</span><b>${o.par-o.hist[o.hist.length-1].q} ${esc(o.unit)}</b></div>`).join("")}</div>`:"")+
+ return back+(order.length?`<div class="card"><div class="lbl">Order list${chip("warn",order.length+(order.length>1?" items":" item"))}</div>${order.map(o=>`<div class="row"><span class="v txt">${esc(o.item)}</span><b>${esc(qu(o.par-o.hist[o.hist.length-1].q,o.unit))}</b></div>`).join("")}</div>`:"")+
  `<div class="sec">Counts</div><div class="list">${items.map((o,i)=>{const q=o.hist.length?o.hist[o.hist.length-1].q:"";const [s,w]=st(o);
-  return `<details><summary class="row"><span class="v txt">${esc(o.item)}<small>${q===""?"—":q} of ${o.par||"—"} ${esc(o.unit)}${o.hist.length?" · "+o.hist[o.hist.length-1].t.toLocaleDateString("en-US",{weekday:"short"}):""}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
+  return `<details><summary class="row"><span class="v txt">${esc(o.item)}<small>${q===""?"—":q} of ${esc(o.par?qu(o.par,o.unit):"— "+o.unit)}${o.hist.length?" · "+o.hist[o.hist.length-1].t.toLocaleDateString("en-US",{weekday:"short"}):""}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
   <div class="det" style="padding-left:0"><div class="stack" style="gap:8px">${usage(o)}<div style="display:flex;gap:8px"><input id="ioh${i}" type="number" inputmode="decimal" placeholder="On hand" aria-label="On hand"><input id="ipar${i}" type="number" inputmode="decimal" placeholder="Par ${o.par||""}" aria-label="Par"></div>
   <button class="btn primary block" data-act="inv" data-i="${i}" data-item="${esc(o.item)}" data-unit="${esc(o.unit)}" data-par="${esc(o.par)}">Save count</button></div></div></details>`}).join("")}</div>`+
  store()+`<div class="addbar"><input id="ini" placeholder="New item" aria-label="New item"><input id="inu" placeholder="Unit" aria-label="Unit" style="max-width:28%"><input id="inp" type="number" inputmode="decimal" placeholder="Par" aria-label="Par" style="max-width:20%"><button class="btn primary sq" data-act="invnew" aria-label="Add item">${I("plus")}</button></div>`};
@@ -188,8 +204,11 @@ S.crewnotes=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const ro
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store()};
 
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();setSrc(ShiftData.live());
- return `<div class="card stack"><div class="lbl">Shared key${chip(has?"good":"warn",has?"Saved on this phone":"Not set")}</div>
- <div class="meta" style="-webkit-line-clamp:3">Data link ${ShiftData.hasUrl()?"is set":"is not set yet"}. ${has?"":"Showing sample data until the key is saved."}</div>
+ await ShiftData.load("Brief").catch(()=>{});setSrc(ShiftData.live());const bad=ShiftData.status.bad;
+ const c=!has?chip("warn","Not set"):bad==="key"?chip("bad","Didn't work"):bad?chip("warn","Can't reach"):ShiftData.live()?chip("good","Working"):chip("neutral","Saved");
+ return `<div class="card stack"><div class="lbl">Shared key${c}</div>
+ ${bad?`<p class="err" role="alert">${esc(keyMsg())}.${bad==="key"?" Check the key with your GM and enter it again.":" Check your connection and try again."}</p>`:""}
+ <div class="meta" style="-webkit-line-clamp:3">Data link ${ShiftData.hasUrl()?"is set":"is not set yet"}. ${has?(ShiftData.live()?"Showing live data.":"Showing sample data."):"Showing sample data until the key is saved."}</div>
  <input id="k" type="password" autocomplete="off" placeholder="Enter shared key" aria-label="Shared key">
  <button class="btn primary block" data-act="key">Save key</button>
  <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>`};
@@ -201,7 +220,7 @@ function tick(){document.querySelectorAll("[data-since]").forEach(el=>{const m=M
  el.className="chip "+(m>=30?"bad":m>=25?"warn":"good");el.textContent=m+" min"})}
 async function show(s){cur=s;$("#title").textContent=TITLE[s];
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
- app.innerHTML=empty("Loading…");try{app.innerHTML=await S[s]()}catch(e){app.innerHTML=`<div class="card"><div class="lbl">Error${chip("bad","Problem")}</div><div class="meta">${esc(e.message)}</div></div>`}
+ app.innerHTML=empty("Loading…");try{app.innerHTML=await S[s]()}catch(e){app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-go="${s}">${I("refresh-cw")}Try again</button></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
  const nw=document.querySelector(".card.now");if(nw&&s==="whoson")nw.scrollIntoView({block:"center"});else window.scrollTo(0,0)}
 document.querySelectorAll("[data-i]").forEach(el=>el.outerHTML=I(el.dataset.i));
@@ -216,8 +235,9 @@ app.addEventListener("click",async e=>{const go=e.target.closest("[data-go]");if
  try{const a=t.dataset.act;
  if(a==="key"){ShiftData.Key.set(v("k"));meta=null;show("home");return}
  if(a==="clearkey"){ShiftData.Key.set("");meta=null;show("settings");return}
- if(a==="pos"&&v("pp"))await F.add("positions",{position:v("pp"),name:v("pn")});
- else if(a==="brk"&&v("bn"))await F.add("breaks",{name:v("bn")});
+ if(a==="pos"&&v("pp")){const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:v("pp"),name:first(v("pn"))})}
+ else if(t.dataset.place){const pos=prompt("Position for "+t.dataset.place,t.dataset.pos||"");if(!pos||!pos.trim())return;const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:pos.trim(),name:t.dataset.place})}
+ else if(a==="brk"&&v("bn"))await F.add("breaks",{name:first(v("bn"))});
  else if(a==="chk"&&v("ci"))await F.add("checklist",{item:v("ci")});
  else if(a==="fix"&&v("fi"))await F.add("fixes",{item:v("fi")});
  else if(a==="hand"&&v("hn"))await F.add("handoff",{note:v("hn")});
