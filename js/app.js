@@ -195,11 +195,11 @@ async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return 
  r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${isNaN(l)?"":chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div>${isNaN(l)?"":`<div class="meta">last week ${l}</div>`}</div>`}).join("")+
  (cm.length?`<details class="card more"><summary>Survey low-score comments: ${cm.length}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")+cmt},
 
-async floor(){FLATE=FLATE||{};const TS=within(toolSync(),600,null);const F=window.Floor;const sub=floorSub;const RP=sub==="positions"?within(roster(),2200,()=>({rows:[]})):null;
+async floor(){FLATE=FLATE||{};const TS=within(toolSync(),150,null);const F=window.Floor;const sub=floorSub;const RP=sub==="positions"?within(roster(),2200,()=>({rows:[]})):null;
  const tabs=[["positions","Positions"],["breaks","Breaks"],["checklist","Checklist"],["fixes","Fixes"],["handoff","Notes"]];
  const seg=`<div class="seg" role="tablist">${tabs.map(([k,l])=>`<button type="button" role="tab" data-sub="${k==="handoff"?"notes":k}" class="${k===sub?"on":""}" aria-selected="${k===sub}">${l}</button>`).join("")}</div>`;
  const lp=F.list(sub).then(v=>saveCache(sub,v));let late=false;
- const rows=await within(lp,hasCache(sub)?700:2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE[sub]||0)<3000)return;FLATE[sub]=Date.now();if(cur==="floor"&&floorSub===sub&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("floor")},()=>{});return cachedList(sub)});const store=`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
+ const rows=await fastList(sub,lp,()=>cur==="floor"&&floorSub===sub,"floor");const store=`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
  const tm=ts=>new Date(ts).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  const chkRow=(x,attr)=>`<div style="display:flex;align-items:center;gap:8px"><label class="chk" style="flex:1"><input type="checkbox" ${attr}="${esc(x.id)}" ${x.done?"checked":""}><span class="box">${I("check")}</span><span>${esc(x.item)}</span></label>${delBtn(attr==="data-chk"?"checklist":"fixes",x.id)}</div>`;
  const chkList=(attr,emp)=>{const vis=rows.filter(x=>SHOWDONE||!x.done),nd=rows.filter(x=>x.done).length;return (vis.length?`<div class="list">${vis.map(x=>chkRow(x,attr)).join("")}</div>`:empty(rows.length?"All done.":emp))+doneTog(nd)};
@@ -223,7 +223,7 @@ async floor(){FLATE=FLATE||{};const TS=within(toolSync(),600,null);const F=windo
   bar=`<input id="fi" placeholder="Fix to do" aria-label="Fix"><button class="btn primary sq" data-act="fix" aria-label="Add">${I("plus")}</button>`}
  if(sub==="handoff"){body=rows.length?`<div class="list">${rows.slice(-10).reverse().map(x=>`<div class="row" style="display:block;padding:12px 0"><div class="note-ts">${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${esc(x.note)}</div>`).join("")}</div>`:empty("No handoff notes yet. Leave one for the next manager below.");
   bar=`<input id="hn" placeholder="Note for next manager" aria-label="Note"><button class="btn primary sq" data-act="hand" aria-label="Save note">${I("plus")}</button>`}
- await TS;return back+seg+body+(late?`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`:store)+`<div class="addbar">${bar}</div>`}
+ await TS;return back+seg+body+store+`<div class="addbar">${bar}</div>`}
 };
 // ---- Guest comments ----
 // Display-side scrub for guest text: emails, phone numbers, long digit runs (order/card numbers).
@@ -290,19 +290,26 @@ async function toolSync(){try{const r=await ShiftData.load("Brief");await setUpd
 const nowT=()=>{const d=new Date();return{date:ymd(d),time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}};
 const pick=(g,opts,cur)=>`<div class="seg" data-group="${g}">${opts.map(o=>`<button type="button" data-pick="${esc(o)}" class="${o===cur?"on":""}">${esc(o[0].toUpperCase()+o.slice(1))}</button>`).join("")}</div>`;
 const PICK={reason:"expired",ntype:"training"};
-S.tools=async()=>{await toolSync();
+S.tools=async()=>{await within(toolSync(),300,null);
  return TOOLS.map(([k,l,ic,m])=>`<button class="card tool" type="button" data-go="${k}">${I(ic)}<span><b>${l}</b><span class="meta">${m}</span></span>${I("chevron-right","cv")}</button>`).join("")};
 const SEED=[["Buns","cases",12],["Patties","cases",10],["Fries","cases",15],["Nuggets","cases",8],["Cups","sleeves",20],["Lids","sleeves",20],["Sauce","boxes",6]];
 // Bounded Tools list: answer within ~2.2s from the live list or this phone's last saved copy; repaint once when late data lands.
 const LATE={};
+// Saved list first (never a bare "Loading…"); the shared list repaints in only if it differs. The "updating" note is a
+// fixed overlay so nothing on the page moves.
+let LTN=0;function lateTip(on){LTN=Math.max(0,LTN+(on?1:-1));let d=document.getElementById("latetip");
+ if(!d){d=document.createElement("div");d.id="latetip";d.setAttribute("aria-live","polite");d.style.cssText="position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:30;pointer-events:none;background:rgba(0,0,0,.72);color:#fff;font-size:12px;padding:4px 10px;border-radius:12px;transition:opacity .2s;opacity:0";d.textContent="Updating shared list…";document.body.append(d)}
+ d.style.opacity=LTN?"1":"0"}
+function fastList(kind,lp,still,screen){const raw=localStorage.getItem("shifthub_flc_"+kind);
+ return within(lp,raw?150:2200,()=>{lateTip(1);lp.then(v=>{lateTip(0);if(JSON.stringify(v)!==raw&&still()&&!$("#sheet"))show(screen)},()=>lateTip(0));return cachedList(kind)})}
 // This phone's last copy of a Tools list (dates/times normalized, deleted ids removed).
 function cachedList(kind){try{let a=JSON.parse(localStorage.getItem("shifthub_flc_"+kind)||"[]");if(window.FloorCompat){a=a.map(FloorCompat.norm);a=FloorCompat.untomb(kind,a)}return a}catch(e){return[]}}
 const hasCache=kind=>!!localStorage.getItem("shifthub_flc_"+kind);
 const saveCache=(kind,v)=>{try{const j=JSON.stringify(v);if(localStorage.getItem("shifthub_flc_"+kind)!==j)localStorage.setItem("shifthub_flc_"+kind,j)}catch(e){}return v};
 async function blist(kind,screen){const lp=Floor.list(kind).then(v=>saveCache(kind,v));
- return within(lp,hasCache(kind)?700:2200,()=>{LATE[kind]=1;lp.then(()=>{if(Date.now()-(FLATE[kind]||0)<3000)return;FLATE[kind]=Date.now();if(cur===screen&&!document.querySelector("#app input:focus")&&!$("#sheet"))show(screen)},()=>{});return cachedList(kind)})}
-const lateNote=k=>LATE[k]?(delete LATE[k],`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`):"";
-S.inventory=async()=>{const TS=within(toolSync(),600,null);const rows=(await blist("inventory","inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
+ return fastList(kind,lp,()=>cur===screen,screen)}
+const lateNote=k=>"";
+S.inventory=async()=>{const TS=within(toolSync(),150,null);const rows=(await blist("inventory","inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
  const by={};SEED.forEach(([i,u,p])=>by[i.toLowerCase()]={item:i,unit:u,par:p,hist:[]});
  rows.forEach(x=>{const k=String(x.item).trim().toLowerCase();if(!k)return;const o=by[k]||(by[k]={item:x.item,unit:x.unit,par:"",hist:[]});if(x.unit)o.unit=x.unit;if(x.par!==""&&x.par!=null)o.par=n(x.par);if(x.on_hand!==""&&x.on_hand!=null)o.hist.push({q:n(x.on_hand),t:new Date(x.ts)})});
  const items=Object.values(by);
@@ -321,13 +328,13 @@ S.inventory=async()=>{const TS=within(toolSync(),600,null);const rows=(await bli
   <button class="btn primary block" data-act="inv" data-i="${i}" data-item="${esc(o.item)}" data-unit="${esc(o.unit)}" data-par="${esc(o.par)}">Save count</button></div></div></details>`}).join("")}</div>`+
  store("inventory")+`<div class="addbar"><input id="ini" placeholder="New item" aria-label="New item"><input id="inu" placeholder="Unit" aria-label="Unit" style="max-width:28%"><input id="inp" type="number" inputmode="decimal" placeholder="Par" aria-label="Par" style="max-width:20%"><button class="btn primary sq" data-act="invnew" aria-label="Add item">${I("plus")}</button></div>`};
 const REASONS=["expired","hold time","dropped","wrong order"];
-S.waste=async()=>{const TS=within(toolSync(),600,null);const lp=Floor.list("waste").then(v=>saveCache("waste",v));let late=false;
- const rows=await within(lp,hasCache("waste")?700:2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE.waste||0)<3000)return;FLATE.waste=Date.now();if(cur==="waste"&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("waste")},()=>{});return cachedList("waste")});const t=nowT().date;
+S.waste=async()=>{const TS=within(toolSync(),150,null);const lp=Floor.list("waste").then(v=>saveCache("waste",v));let late=false;
+ const rows=await fastList("waste",lp,()=>cur==="waste","waste");const t=nowT().date;
  const today=rows.filter(x=>x.date===t),tq=today.reduce((a,x)=>a+(n(x.qty)||0),0);
  const wk=new Date(Date.now()-7*864e5);const top={};rows.filter(x=>new Date(x.date+"T12:00:00")>=wk).forEach(x=>{const k=String(x.item).trim();top[k]=(top[k]||0)+(n(x.qty)||0)});
  const tops=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,3);
  const quick=["Fries","Patties","Nuggets","Buns","Chicken","Pies"].map(x=>`<button type="button" class="btn" data-fill="wi" data-v="${x}">${x}</button>`).join("");
- await TS;return back+oldCard("waste")+(late?`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`:"")+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
+ await TS;return back+oldCard("waste")+""+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
  <div class="card"><div class="lbl">Top 7 days</div>${tops.length?tops.map(([k,v])=>`<div class="meta" style="color:var(--ink-2)"><b>${esc(k)}</b> ${v}</div>`).join(""):`<div class="meta">Nothing logged</div>`}</div></div>
  <div class="card stack"><div class="lbl">Log waste</div><div class="quick">${quick}</div>
  <div style="display:flex;gap:8px"><input id="wi" placeholder="Item" aria-label="Item"><input id="wq" type="number" inputmode="decimal" value="1" aria-label="Quantity" style="max-width:30%"></div>
@@ -336,7 +343,7 @@ S.waste=async()=>{const TS=within(toolSync(),600,null);const lp=Floor.list("wast
 const delBtn=(k,id)=>`<button class="btn sq" type="button" data-del="${esc(k)}" data-id="${esc(id)}" aria-label="Delete">${I("trash")}</button>`;
 let SHOWDONE=false;const doneTog=n=>n?`<button class="btn" type="button" data-showdone="1" style="align-self:flex-start">${SHOWDONE?"Hide done":"Show done ("+n+")"}</button>`:"";
 const EQS={"open":["bad","Open"],"in progress":["warn","In progress"],"fixed":["good","Fixed"]};
-S.equipment=async()=>{const TS=within(toolSync(),600,null);const rows=(await blist("equipment","equipment")).slice().reverse();
+S.equipment=async()=>{const TS=within(toolSync(),150,null);const rows=(await blist("equipment","equipment")).slice().reverse();
  const ord=x=>({open:0,"in progress":1,fixed:2}[x.status]??0);rows.sort((a,b)=>ord(a)-ord(b));const open=rows.filter(x=>x.status!=="fixed").length;
  await TS;return back+oldCard("equipment")+lateNote("equipment")+`<div class="card stack"><div class="lbl">Report an issue${chip(open?"warn":"good",open?open+" open":"All fixed")}</div>
  <input id="eqe" placeholder="Equipment (e.g. Fry vat 2)" aria-label="Equipment"><input id="eqi" placeholder="What's wrong" aria-label="Issue"><input id="eqr" placeholder="Reported by (first name)" aria-label="Reported by">
@@ -346,13 +353,13 @@ S.equipment=async()=>{const TS=within(toolSync(),600,null);const rows=(await bli
  ${x.status==="fixed"?"":`<div class="stack" style="gap:8px;margin-top:8px"><input id="fx${esc(x.id)}" placeholder="Fixer (first name)" value="${esc(x.fixer||"")}" aria-label="Fixer">
  <div style="display:flex;gap:8px">${x.status!=="in progress"?`<button class="btn" style="flex:1" data-eq="${esc(x.id)}" data-st="in progress">In progress</button>`:""}<button class="btn primary" style="flex:1" data-eq="${esc(x.id)}" data-st="fixed">Fixed</button></div></div>`}<div style="margin-top:8px">${delBtn("equipment",x.id)}</div></div></details>`}).join("")}</div>`:empty("No equipment issues")}`+store("equipment")};
 const NTYPES=["training","ready to promote","call-out","praise"];const NST={"training":"neutral","ready to promote":"good","call-out":"warn","praise":"good"};
-S.crewnotes=async()=>{const TS=within(toolSync(),600,null);const rows=(await blist("crewnotes","crewnotes")).slice().reverse();
+S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await blist("crewnotes","crewnotes")).slice().reverse();
  await TS;return back+oldCard("crewnotes")+lateNote("crewnotes")+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
  <div class="card stack"><div class="lbl">New note</div><input id="cnn" placeholder="First name" aria-label="First name">
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v24";
+const APPVER="v25";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -439,8 +446,9 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  const fl=e.target.closest("[data-fill]");if(fl){$("#"+fl.dataset.fill).value=fl.dataset.v;$("#wq").focus();return}
  const sb=e.target.closest("[data-sub]");if(sb){floorSub=sb.dataset.sub==="notes"?"handoff":sb.dataset.sub;show("floor");return}
  const sd=e.target.closest("[data-showdone]");if(sd){SHOWDONE=!SHOWDONE;show(cur,{force:1});return}
- const dl=e.target.closest("[data-del]");if(dl){if(!confirm("Delete this entry?"))return;dl.disabled=true;try{(dl.closest("details")||dl.closest(".row")).remove();VIEW[shown]=app.innerHTML;pvSet(shown,app.innerHTML)}catch(err){}try{await window.Floor.remove(dl.dataset.del,dl.dataset.id)}catch(err){alert("Could not delete: "+err.message)}show(cur,{force:1});return}
- const t=e.target.closest("button,input")||e.target,F=window.Floor,ADD=async(k,r)=>{const x=await F.add(k,r);if(x&&x.id)saveCache(k,cachedList(k).concat([Object.assign({},r,x)]));return x},v=id=>($("#"+id)||{}).value?.trim();
+ const dl=e.target.closest("[data-del]");if(dl){if(!confirm("Delete this entry?"))return;dl.disabled=true;try{(dl.closest("details")||dl.closest(".row")).remove();VIEW[shown]=app.innerHTML;pvSet(shown,app.innerHTML)}catch(err){}const pr=window.Floor.remove(dl.dataset.del,dl.dataset.id);show(cur,{force:1});try{await pr}catch(err){alert("Could not delete: "+err.message)}show(cur,{force:1});return}
+ const t=e.target.closest("button,input")||e.target,F=window.Floor,ADD=(k,r)=>{const tmp=Object.assign({},r,{id:"tmp"+Date.now(),ts:new Date().toISOString(),_pending:1});saveCache(k,cachedList(k).concat([tmp]));clr();show(cur,{force:1});
+  return F.add(k,r).then(x=>{const c=cachedList(k).filter(y=>y.id!==tmp.id);if(x&&x.id)c.push(Object.assign({},r,x));saveCache(k,c);return x},e=>{saveCache(k,cachedList(k).filter(y=>y.id!==tmp.id));throw e})},v=id=>($("#"+id)||{}).value?.trim();
  if(t.tagName==="BUTTON"&&t.dataset.act){if(t.dataset.busy)return;t.dataset.busy="1";t.disabled=true;setTimeout(()=>{t.disabled=false;delete t.dataset.busy},1500)}
  const clr=()=>app.querySelectorAll(".addbar input,.card.stack input").forEach(i=>{if(!/^fx/.test(i.id))i.value=""});
  try{const a=t.dataset.act;
@@ -466,7 +474,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
    pe.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(row.first_name)}</b>${chip(NST[row.type]||"neutral",row.type)}</div><div>${esc(row.note)}</div><div class="note-ts">${esc(row.date)} ${chip("warn","Pending sync")}</div>`;
    let L=document.querySelector("#app .list");if(!L){const em=document.querySelector("#app .empty");L=document.createElement("div");L.className="list";if(em)em.replaceWith(L);else $("#app").append(L)}L.prepend(pe);VIEW.crewnotes=app.innerHTML}catch(e){}
   if(cur==="crewnotes")clr();show("crewnotes",{force:1});return}
- else if(t.dataset.cndel){if(!confirm("Delete this crew note?"))return;try{t.closest(".row").remove();VIEW.crewnotes=app.innerHTML;pvSet("crewnotes",app.innerHTML)}catch(err){}await F.remove("crewnotes",t.dataset.cndel);clr();show("crewnotes",{force:1});return}
+ else if(t.dataset.cndel){if(!confirm("Delete this crew note?"))return;try{t.closest(".row").remove();VIEW.crewnotes=app.innerHTML;pvSet("crewnotes",app.innerHTML)}catch(err){}const pr2=F.remove("crewnotes",t.dataset.cndel);show("crewnotes",{force:1});await pr2;clr();show("crewnotes",{force:1});return}
  else if(t.dataset.back)await F.update("breaks",t.dataset.back,{back:new Date().toISOString()});
  else if(t.dataset.chk)await F.update("checklist",t.dataset.chk,{done:t.checked});
  else if(t.dataset.fix)await F.update("fixes",t.dataset.fix,{done:t.checked});

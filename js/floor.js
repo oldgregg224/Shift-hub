@@ -5,9 +5,10 @@ const LocalAdapter={name:"This phone only",_k:k=>"shifthub_floor_"+k,
  async add(k,row){const a=await this.list(k);row.id=Date.now()+""+Math.random().toString(36).slice(2,6);row.ts=new Date().toISOString();a.push(row);localStorage.setItem(this._k(k),JSON.stringify(a));return row},
  async update(k,id,p){const a=await this.list(k);const i=a.findIndex(x=>x.id==id);if(i>=0){Object.assign(a[i],p);localStorage.setItem(this._k(k),JSON.stringify(a))}},
  async remove(k,id){const a=await this.list(k);localStorage.setItem(this._k(k),JSON.stringify(a.filter(x=>x.id!=id)))}};
+const txt=r=>r&&typeof r.time==="string"&&/^\d{1,2}:\d\d$/.test(r.time)?Object.assign({},r,{time:"'"+r.time}):r;
 const AppsScriptAdapter={name:"Shared (Google Sheet)",
  async list(k){return (await ShiftData.api({action:"list",kind:k})).rows},
- async add(k,row){return (await ShiftData.api({action:"add",kind:k},row)).row},
+ async add(k,row){return (await ShiftData.api({action:"add",kind:k},txt(row))).row},
  async update(k,id,p){return ShiftData.api({action:"update",kind:k,id},p)},
  async remove(k,id){try{return await ShiftData.api({action:"delete",kind:k,id},{})}
   catch(e){if(/bad action/i.test(e.message))throw new Error("delete needs the latest Shift Hub Apps Script");throw e}}};
@@ -43,8 +44,16 @@ const normDate=v=>{v=v==null?"":String(v);const m=v.match(/^(\d{4}-\d\d-\d\d)T(\
 const NYT=new Intl.DateTimeFormat("en-GB",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
 // Sheets time-only cells arrive as 1899-12-30T..Z; any ISO value in a "time" field is shown as HH:mm (New York).
 const fmtTime=v=>{v=v==null?"":String(v);if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(v))return v;const d=new Date(v);return isNaN(d)?v:NYT.format(d)};
-const norm=r=>{if(!r||typeof r!=="object")return r;for(const k in r){const v=r[k];if(typeof v!=="string")continue;
-  if(k==="date")r[k]=normDate(v);else if(k==="time"||/^1899-12-3[01]T/.test(v))r[k]=fmtTime(v)}return r};
+// Sheets time-only cells come back as 1899-12-30T..Z shifted by the spreadsheet's (unknown) 1899 offset. Read the wall time
+// under the plausible offsets (UTC, New York 1899/EST/EDT) and keep the one closest to when the row was saved (ts, New York).
+const hm=m=>String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
+const t1899=(v,ts)=>{const d=new Date(v);if(isNaN(d))return v;const u=d.getUTCHours()*60+d.getUTCMinutes()+(d.getUTCSeconds()>=30?1:0);
+ const c=[u,u-296,u-300,u-240].map(m=>((m%1440)+1440)%1440);const t=ts&&!isNaN(new Date(ts))?NYT.format(new Date(ts)).split(":").map(Number):null;
+ if(!t)return hm(c[0]);const tm=t[0]*60+t[1],dist=m=>{const x=Math.abs(m-tm)%1440;return Math.min(x,1440-x)};return hm(c.reduce((a,b)=>dist(b)<dist(a)?b:a))};
+const norm=r=>{if(!r||typeof r!=="object")return r;for(const k in r){let v=r[k];if(typeof v!=="string")continue;
+  if(k==="date")r[k]=normDate(v);
+  else if(/^1899-12-3[01]T/.test(v))r[k]=t1899(v,r.ts);
+  else if(k==="time"){v=v.replace(/^'/,"");r[k]=/^\d{4}-\d\d-\d\dT/.test(v)?fmtTime(v):v}}return r};
 const TK=k=>"shifthub_tomb_"+k;
 const tombs=k=>{try{const t=JSON.parse(localStorage.getItem(TK(k))||"{}"),now=Date.now();for(const i in t)if(now-t[i]>36e5)delete t[i];return t}catch(e){return{}}};
 const tomb=(k,id)=>{try{const t=tombs(k);t[id]=Date.now();localStorage.setItem(TK(k),JSON.stringify(t))}catch(e){}};
@@ -85,7 +94,7 @@ function shared(W){const MEMO={},FL={},RECENT={},DAY=864e5,SK=k=>"shifthub_share
   async remove(k,i){tomb(k,i);dropCache(k,i);if(MEMO[k])MEMO[k].v=MEMO[k].v.filter(y=>y.id!=i);if(String(i).length&&(await LocalAdapter.list(k)).some(x=>x.id==i)&&!OLD.has(k)){await LocalAdapter.remove(k,i);return {ok:true}}
    const v=await W.remove(k,i);if(MEMO[k])saveShared(k,MEMO[k].v.filter(y=>y.id!=i));if(RECENT[k])RECENT[k]=RECENT[k].filter(y=>y.id!=i);return v}}}
 const WL=wrap(LocalAdapter),WA=shared(wrap(guard(AppsScriptAdapter)));
-window.FloorCompat={normDate,fmtTime,norm,untomb,needsUpdate:k=>OLD.has(k),slow:k=>SLOW.has(k)};
+window.FloorCompat={t1899,normDate,fmtTime,norm,untomb,needsUpdate:k=>OLD.has(k),slow:k=>SLOW.has(k)};
 // Shared mode whenever a key is set and was not rejected (also before the first live load, offline or unreachable) and was not rejected, so saved shared lists + pending show.
 Object.defineProperty(window,"Floor",{get:()=>ShiftData.live()||(ShiftData.hasUrl()&&ShiftData.Key.get()&&ShiftData.status.bad!=="key")?WA:WL});
 window.FloorPos={key:posKey,id:posId,dedupe};
