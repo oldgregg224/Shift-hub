@@ -93,7 +93,7 @@ async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return 
  const cm=r.filter(x=>x.low_score_comment_names_removed);
  return keyAlert()+(f?`<div class="tip">${I("target")}<span>${esc(f.coaching_focus)}</span></div>`:"")+
  r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div><div class="meta">last week ${isNaN(l)?"—":l}</div></div>`}).join("")+
- (cm.length?`<details class="card more"><summary>${cm.length} low-score comment${cm.length>1?"s":""}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")+cmt},
+ (cm.length?`<details class="card more"><summary>Survey low-score comments: ${cm.length}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")+cmt},
 
 async floor(){$("#upd").textContent="";const F=window.Floor;const sub=floorSub;
  setSrc(ShiftData.live());
@@ -141,7 +141,8 @@ async function comments(){let rows=[],live=false;try{const r=await ShiftData.loa
  const sc=x=>{const v=n(x.score);return chip(v>=4?"good":v>=3?"warn":"bad",(isNaN(v)?"—":v)+"/5")};
  const seg=(g,opts,curv)=>`<div class="seg" role="tablist">${opts.map(([k,l])=>`<button type="button" role="tab" data-${g}="${k}" class="${String(k)===String(curv)?"on":""}" aria-selected="${String(k)===String(curv)}">${l}</button>`).join("")}</div>`;
  const day=s=>{const d=new Date(s+"T12:00:00");return isNaN(d)?esc(s):d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})};
- return `<div class="sec">Comments</div><div class="card stack"><div class="lbl">Last ${cmtDays} days${chip(neg?"warn":"good",neg+" negative")}</div>
+ return `<div class="sec">Comments</div><div class="card stack"><div class="lbl">Last ${cmtDays} days${cmtF==="all"?chip("neutral","All: "+inRange.length):cmtF==="negative"?chip(neg?"warn":"good","Negative: "+neg):chip("good","Positive: "+list.length)}</div>
+ <p class="meta" style="margin:0">Low scores (1–2): ${inRange.filter(x=>n(x.score)<=2).length} · Negative: ${neg} · Positive: ${inRange.filter(x=>sen(x)==="positive").length}</p>
  ${seg("cmtf",[["all","All"],["negative","Negative"],["positive","Positive"]],cmtF)}${seg("cmtd",[[7,"7 days"],[14,"14 days"]],cmtDays)}
  ${list.length?`<div class="list">${list.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="note-ts" style="margin:0;flex:1">${day(x.date)}</span>${sc(x)}${chip(sen(x)==="negative"?"bad":sen(x)==="positive"?"good":"neutral",sen(x)?sen(x)[0].toUpperCase()+sen(x).slice(1):"—")}</div><div style="margin-top:4px">${esc(scrub(x.comment))}</div></div>`).join("")}</div>`:empty(cmtF==="all"?"No comments in this range":"No "+cmtF+" comments in this range")}</div>`}
 // ---- Who's on (Roster) ----
@@ -253,15 +254,22 @@ function openSheet(name,cur){closeSheet();const d=document.createElement("div");
 let cur="home",floorSub="positions",timer=null;
 function tick(){document.querySelectorAll("[data-since]").forEach(el=>{const m=Math.floor((Date.now()-new Date(el.dataset.since))/60000);
  el.className="chip "+(m>=30?"bad":m>=25?"warn":"good");el.textContent=m+" min"})}
-async function show(s){cur=s;$("#title").textContent=TITLE[s];
+// Stale-while-revalidate: paint the last HTML for this screen at once, then swap in fresh HTML if it changed.
+// seq guards against a slow load overwriting a screen the user has already left.
+const VIEW={};let seq=0,shown="";
+async function show(s,o={}){const my=++seq,moved=shown!==s;cur=s;shown=s;$("#title").textContent=TITLE[s];
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
- app.innerHTML=empty("Loading…");try{app.innerHTML=await S[s]()}catch(e){app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-go="${s}">${I("refresh-cw")}Try again</button></div>`}
+ const had=!o.fresh&&VIEW[s];if(had)app.innerHTML=VIEW[s];else if(moved||o.fresh)app.innerHTML=empty("Loading…");
+ if(moved)scrollTop_(s);
+ try{const h=await S[s]();if(my!==seq)return;if(h!==VIEW[s]||!had){app.innerHTML=h;VIEW[s]=h;if(moved&&!had)scrollTop_(s)}}catch(e){if(my!==seq)return;if(had)return;delete VIEW[s];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
- const nw=document.querySelector(".card.now");if(nw&&s==="whoson")nw.scrollIntoView({block:"center"});else window.scrollTo(0,0)}
+}
+function scrollTop_(s){const nw=document.querySelector(".card.now");if(nw&&s==="whoson")nw.scrollIntoView({block:"center"});else window.scrollTo(0,0)}
 document.querySelectorAll("[data-i]").forEach(el=>el.outerHTML=I(el.dataset.i));
 $("#gear").innerHTML=I("settings");
 $("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)show(b.dataset.s)};
-app.addEventListener("click",async e=>{const go=e.target.closest("[data-go]");if(go){show(go.dataset.go);return}
+app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]");if(rt){ShiftData.reset();show(rt.dataset.retry,{fresh:1});return}
+ const go=e.target.closest("[data-go]");if(go){show(go.dataset.go);return}
  const cf=e.target.closest("[data-cmtf]");if(cf){cmtF=cf.dataset.cmtf;const y=scrollY;await show("guest");scrollTo(0,y);return}
  const cdd=e.target.closest("[data-cmtd]");if(cdd){cmtDays=+cdd.dataset.cmtd;const y=scrollY;await show("guest");scrollTo(0,y);return}
  const wh=e.target.closest("[data-who]");if(wh){whoDay=+wh.dataset.who;show("whoson");return}
@@ -270,8 +278,8 @@ app.addEventListener("click",async e=>{const go=e.target.closest("[data-go]");if
  const sb=e.target.closest("[data-sub]");if(sb){floorSub=sb.dataset.sub==="notes"?"handoff":sb.dataset.sub;show("floor");return}
  const t=e.target.closest("button,input")||e.target,F=window.Floor,v=id=>($("#"+id)||{}).value?.trim();
  try{const a=t.dataset.act;
- if(a==="key"){ShiftData.Key.set(v("k"));meta=null;show("home");return}
- if(a==="clearkey"){ShiftData.Key.set("");meta=null;show("settings");return}
+ if(a==="key"){ShiftData.Key.set(v("k"));meta=null;for(const k in VIEW)delete VIEW[k];show("home");return}
+ if(a==="clearkey"){ShiftData.Key.set("");meta=null;for(const k in VIEW)delete VIEW[k];show("settings");return}
  if(a==="pos"&&v("pp")){const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:v("pp"),name:first(v("pn"))})}
  else if(t.dataset.place){openSheet(t.dataset.place,t.dataset.pos);return}
  else if(a==="brk"&&v("bn"))await F.add("breaks",{name:first(v("bn"))});
