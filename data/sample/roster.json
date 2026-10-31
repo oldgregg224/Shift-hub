@@ -5,7 +5,7 @@
   "shift": "6a-2p",
   "role": "manager",
   "first_name": "Ana",
-  "position": "Shift manager",
+  "position": "Certified Swing Manager",
   "start": "06:00",
   "end": "14:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -15,8 +15,8 @@
   "date": "2026-10-30",
   "shift": "6a-2p",
   "role": "crew",
-  "first_name": "Ben",
-  "position": "Grill",
+  "first_name": "Ben K",
+  "position": "Crew Trainer",
   "start": "06:00",
   "end": "12:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -26,8 +26,8 @@
   "date": "2026-10-30",
   "shift": "6a-2p",
   "role": "crew",
-  "first_name": "Cara",
-  "position": "Drive-thru window",
+  "first_name": "Cara D",
+  "position": "Crew Member",
   "start": "07:00",
   "end": "14:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -38,7 +38,7 @@
   "shift": "6a-2p",
   "role": "crew",
   "first_name": "Dev",
-  "position": "Front counter",
+  "position": "Crew Member",
   "start": "10:00",
   "end": "14:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -49,7 +49,7 @@
   "shift": "2p-10p",
   "role": "manager",
   "first_name": "Eli",
-  "position": "Shift manager",
+  "position": "Certified Swing Manager",
   "start": "14:00",
   "end": "22:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -60,7 +60,7 @@
   "shift": "2p-10p",
   "role": "crew",
   "first_name": "Fay",
-  "position": "Grill",
+  "position": "Crew Member",
   "start": "14:00",
   "end": "22:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -71,7 +71,7 @@
   "shift": "2p-10p",
   "role": "crew",
   "first_name": "Gus",
-  "position": "Drive-thru order",
+  "position": "Crew Member",
   "start": "16:00",
   "end": "22:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -82,7 +82,7 @@
   "shift": "2p-10p",
   "role": "crew",
   "first_name": "Hana",
-  "position": "Fries",
+  "position": "Crew Member",
   "start": "17:00",
   "end": "21:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -93,7 +93,7 @@
   "shift": "10p-6a",
   "role": "manager",
   "first_name": "Ivy",
-  "position": "Shift manager",
+  "position": "Certified Swing Manager",
   "start": "22:00",
   "end": "06:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -103,8 +103,8 @@
   "date": "2026-10-30",
   "shift": "10p-6a",
   "role": "crew",
-  "first_name": "Jon",
-  "position": "Grill",
+  "first_name": "Jon P.",
+  "position": "Crew Trainer",
   "start": "22:00",
   "end": "06:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -115,7 +115,7 @@
   "shift": "10p-6a",
   "role": "crew",
   "first_name": "Kai",
-  "position": "Drive-thru window",
+  "position": "Crew Member",
   "start": "22:00",
   "end": "04:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -126,7 +126,7 @@
   "shift": "6a-2p",
   "role": "manager",
   "first_name": "Mia",
-  "position": "Shift manager",
+  "position": "Certified Swing Manager",
   "start": "06:00",
   "end": "14:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -137,7 +137,7 @@
   "shift": "6a-2p",
   "role": "crew",
   "first_name": "Noah",
-  "position": "Grill",
+  "position": "Crew Member",
   "start": "06:00",
   "end": "12:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -147,8 +147,8 @@
   "date": "2026-10-31",
   "shift": "6a-2p",
   "role": "crew",
-  "first_name": "Owen",
-  "position": "Drive-thru window",
+  "first_name": "Owen T",
+  "position": "Crew Member",
   "start": "07:00",
   "end": "14:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -159,7 +159,7 @@
   "shift": "6a-2p",
   "role": "crew",
   "first_name": "Pia",
-  "position": "Front counter",
+  "position": "Crew Member",
   "start": "10:00",
   "end": "14:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -170,7 +170,7 @@
   "shift": "2p-10p",
   "role": "manager",
   "first_name": "Quin",
-  "position": "Shift manager",
+  "position": "Certified Swing Manager",
   "start": "14:00",
   "end": "22:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -180,8 +180,8 @@
   "date": "2026-10-31",
   "shift": "2p-10p",
   "role": "crew",
-  "first_name": "Rosa",
-  "position": "Grill",
+  "first_name": "Rosa M",
+  "position": "Crew Trainer",
   "start": "14:00",
   "end": "22:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -191,8 +191,8 @@
   "date": "2026-10-31",
   "shift": "2p-10p",
   "role": "crew",
-  "first_name": "Sam",
-  "position": "Drive-thru order",
+  "first_name": "Sam R",
+  "position": "Crew Member",
   "start": "16:00",
   "end": "22:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -203,7 +203,7 @@
   "shift": "2p-10p",
   "role": "crew",
   "first_name": "Tia",
-  "position": "Fries",
+  "position": "Crew Member",
   "start": "17:00",
   "end": "21:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -214,7 +214,7 @@
   "shift": "10p-6a",
   "role": "manager",
   "first_name": "Uma",
-  "position": "Shift manager",
+  "position": "Certified Swing Manager",
   "start": "22:00",
   "end": "06:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -225,7 +225,7 @@
   "shift": "10p-6a",
   "role": "crew",
   "first_name": "Vic",
-  "position": "Grill",
+  "position": "Crew Member",
   "start": "22:00",
   "end": "06:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
@@ -236,9 +236,20 @@
   "shift": "10p-6a",
   "role": "crew",
   "first_name": "Wes",
-  "position": "Drive-thru window",
+  "position": "Crew Member",
   "start": "22:00",
   "end": "04:00",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-31",
+  "shift": "6a-2p",
+  "role": "crew",
+  "first_name": "Juan",
+  "position": "Crew Member",
+  "start": "06:00",
+  "end": "11:00",
   "last_updated": "2026-10-30T14:00:00-04:00"
  }
 ]

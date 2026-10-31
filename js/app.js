@@ -280,6 +280,7 @@ S.whoson=async()=>{const {rows,live,r}=await roster();
   ${cr.length?cr.map(x=>`<div class="row"><span class="v txt">${esc(first(x.first_name))}<small>${esc(x.position)}</small></span><span class="tm">${clock(x.start,1)}–${clock(x.end,1)}</span></div>`).join(""):`<p class="meta">No crew listed</p>`}</div>`}).join("");
  return seg+`<button class="btn block" type="button" data-go="cover">${I("users")}Who can cover?</button>`+`<p class="upd" style="padding:0">${d.toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}</p>`+cards};
 // ---- Who can cover? (read-only suggestions from Roster + Coverage; no contact info, no messaging) ----
+const h1=n=>(Math.round(n*10)/10).toString();
 // Time "22:00", "10:00 PM", "10p", "6a" -> minutes after midnight (NaN if unreadable).
 const tmin=v=>{const m=String(v||"").trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*([ap])?\.?m?\.?$/);if(!m)return NaN;let h=+m[1];const mi=+(m[2]||0);
  if(m[3]){if(h===12)h=0;if(m[3]==="p")h+=12}return h>23||mi>59?NaN:h*60+mi};
@@ -318,41 +319,78 @@ function restWarn(sh,iv){const out=[];let a=iv[0],b=iv[1],chain=false;const ss=s
  if(chain)out.push("back-to-back, "+h1((b-a)/60)+" h day");
  let gb=Infinity,ga=Infinity;ss.forEach(r=>{if(r.sp[1]<a)gb=Math.min(gb,a-r.sp[1]);if(r.sp[0]>b)ga=Math.min(ga,r.sp[0]-b)});const g=Math.min(gb,ga);
  if(g<480)out.push("only "+h1(g/60)+" h rest "+(gb<=ga?"before":"after"));return out}
-// target: {position,date,start,end,out?}. Projected = max(week_hours_so_far, scheduled_week_hours) + shift length; allowed if <= 40.
-function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!iv)return{error:"Enter a start and end time"};const len=(iv[1]-iv[0])/60,pos=String(t.position||"").trim().toLowerCase(),out=nkey(t.out||"");
- const busy={};roster.forEach(r=>{const sp=span(r.date,r.start,r.end);if(sp)(busy[nkey(r.first_name)]=busy[nkey(r.first_name)]||[]).push(Object.assign({sp},r))});
- const ok=[],no=[];const seen=new Set();
- crew.filter(c=>String(c.row_type||"").toUpperCase()!=="HEADER"&&first(c.first_name)).forEach(c=>{const k=nkey(c.first_name);if(k===out||seen.has(k))return;seen.add(k);
-  const skills=String(c.positions_skills||"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
-  const so=hrs(c.week_hours_so_far),sch=hrs(c.scheduled_week_hours),base=Math.max(so,sch),proj=Math.round((base+len)*100)/100;
-  const ov=(busy[k]||[]).filter(r=>r.sp[0]<iv[1]&&iv[0]<r.sp[1]);const why=[];
-  if(!skills.includes(pos))why.push("no skill");if(ov.length)why.push("overlap");if(proj>cap)why.push("over "+cap);
-  const warn=why.length?[]:restWarn(busy[k]||[],iv).concat(availWarn(c.availability_notes,iv));
-  const o={name:first(c.first_name),skills:c.positions_skills||"",notes:c.availability_notes||"",so,sch,base,basis:sch>so?"scheduled":"so far",proj,ov,why,warn};(why.length?no:ok).push(o)});
- ok.sort((a,b)=>(a.warn.length>0)-(b.warn.length>0)||a.proj-b.proj||a.name.localeCompare(b.name));return{len,ok,no,iv}}
+// ---- Coverage data format ----
+// New (Store Ops Bot / Harri): "ROLE:Crew Member; GRILL REGULAR MENU:4; WINDOW:3; ..."  Old: "Grill, Fries".
+const STATIONS=["BEVERAGE SPECIALIST","DRIVE THRU","FRENCH FRIES","GRILL BREAKFAST MENU","GRILL REGULAR MENU","HASHBROWN","WINDOW","FLOOR","LOBBY","MAINTENANCE","SUPPORT / PREP"];
+function parseSkills(v){const s=String(v||"").trim(),o={role:"",st:{},old:[]};if(!s)return o;
+ if(/(^|;)\s*ROLE\s*:/i.test(s)||s.includes(";")){s.split(";").map(x=>x.trim()).filter(Boolean).forEach(p=>{const i=p.lastIndexOf(":");if(i<0){o.old.push(p.toLowerCase());return}const k=p.slice(0,i).trim(),val=p.slice(i+1).trim();
+   if(/^role$/i.test(k))o.role=val;else{const n=parseInt(val,10);o.st[k.toUpperCase().replace(/\s+/g," ")]=isNaN(n)?null:n}})}
+ else o.old=s.split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);return o}
+window.parseSkills=parseSkills;
+// Names: "Juan A" / "Juan A." / "Juan" -> {f:"juan", i:"a"|""}
+const pname=s=>{const p=String(s||"").replace(/\./g," ").trim().toLowerCase().split(/\s+/).filter(Boolean);return{f:p[0]||"",i:p[1]?p[1][0]:""}};
+const dname=s=>String(s||"").trim().split(/\s+/).slice(0,2).join(" ");
+// 0 = different person, 1 = sure match, 2 = possible match (bare first name shared by several crew)
+const nmatch=(a,b,dup)=>{if(!a.f||a.f!==b.f)return 0;if(a.i&&b.i)return a.i===b.i?1:0;return dup>1?2:1};
+const nhrs=v=>{const s=String(v??"").trim();if(!s)return null;const x=parseFloat(s.replace(/[^\d.\-]/g,""));return isNaN(x)?null:x};
+const LATE_ST=["WINDOW","GRILL REGULAR MENU"];
+// target: {role (or legacy position), station?, min?, date, start, end, out?}.
+// Hours basis = higher of so-far / scheduled that are present; projected = basis + shift; allowed if <= cap.
+function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!iv)return{error:"Enter a start and end time"};const len=(iv[1]-iv[0])/60;
+ const role=String(t.role||t.position||"").trim().toLowerCase(),stn=String(t.station||"").trim().toUpperCase(),min=+t.min||1,out=t.out?pname(t.out):null;
+ const rows=crew.filter(c=>!/^(HEADER|NOTE)$/i.test(String(c.row_type||"").trim())&&String(c.first_name||"").trim());
+ const dup={};rows.forEach(c=>{const f=pname(c.first_name).f;dup[f]=(dup[f]||0)+1});
+ const rs=roster.map(r=>Object.assign({sp:span(r.date,r.start,r.end),pn:pname(r.first_name)},r)).filter(r=>r.sp);
+ const late=(iv[1]-Math.floor(iv[0]/1440)*1440)>1320;
+ const ok=[],no=[],seen=new Set();
+ rows.forEach(c=>{const pn=pname(c.first_name),key=pn.f+" "+pn.i;if(seen.has(key))return;seen.add(key);
+  const outM=out?nmatch(pn,out,dup[pn.f]||0):0;if(outM===1)return;
+  const sk=parseSkills(c.positions_skills);const hasRole=sk.role?sk.role.trim().toLowerCase()===role:sk.old.includes(role);
+  const lvl=stn?(stn in sk.st?sk.st[stn]:(sk.old.includes(stn.toLowerCase())?0:null)):undefined;
+  const so=nhrs(c.week_hours_so_far),sch=nhrs(c.scheduled_week_hours),known=[so,sch].filter(x=>x!==null);const base=known.length?Math.max(...known):0;
+  const basis=!known.length?"none":sch!==null&&(so===null||sch>=so)?"scheduled":"so far",proj=Math.round((base+len)*100)/100;
+  const mine=[],maybe=[];rs.forEach(r=>{const m=nmatch(pn,r.pn,dup[pn.f]||0);if(m===1)mine.push(r);else if(m===2)maybe.push(r)});
+  const hit=r=>r.sp[0]<iv[1]&&iv[0]<r.sp[1];const ov=mine.filter(hit),ovm=maybe.filter(hit);const why=[];
+  if(!hasRole)why.push(role?"different role":"no role");if(stn&&(lvl===null||(lvl>0&&lvl<min)))why.push(lvl===null?"no "+stn+" level":stn+" level "+lvl+" < "+min);
+  if(ov.length)why.push("overlap");if(proj>cap)why.push("over "+cap);
+  let warn=[];if(!why.length){warn=restWarn(mine,iv);const rm=restWarn(maybe,iv);
+   if(ovm.length||rm.length||outM===2)warn.push("name match uncertain"+(outM===2?" (called-out?)":ovm.length?" (possible overlap)":" (possible short rest)"));warn=warn.concat(availWarn(c.availability_notes,iv))}
+  const lateLvl=Math.max(0,...LATE_ST.map(s=>sk.st[s]||0));
+  const o={name:dname(c.first_name),role:sk.role||sk.old.join(", "),st:sk.st,lvl,notes:c.availability_notes||"",so,sch,base,basis,proj,ov:ov.concat(ovm),why,warn,lateLvl};(why.length?no:ok).push(o)});
+ ok.sort((a,b)=>(a.warn.length>0)-(b.warn.length>0)||(late&&!a.warn.length&&!b.warn.length?b.lateLvl-a.lateLvl:0)||a.proj-b.proj||a.name.localeCompare(b.name));return{len,ok,no,iv,late}}
 window.covRank=covRank;
-let COV={sel:"",pos:"",date:"",start:"",end:"",ran:false};
-const h1=n=>(Math.round(n*10)/10).toString();
+let COV={sel:"",role:"",station:"",min:"1",date:"",start:"",end:"",ran:false};
+const SEL='style="width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line,#d5dbe3);border-radius:12px;background:var(--surface,#fff);color:var(--ink,#111);font:inherit;font-size:16px;margin-top:2px"';
 S.cover=async()=>{const R=within(roster(),2500,()=>({rows:[],live:false,r:{src:"slow"}}));const cr=await within(ShiftData.load("Coverage"),2500,()=>({rows:[],src:"slow"})).catch(e=>({rows:[],src:"error",err:e.message}));const {rows,r}=await R;
- const head=`<button class="btn" data-go="whoson" style="align-self:flex-start">${I("chevron-left")}Who's on</button><div class="tip">${I("lock")}<span>Suggestions only · first names only · no contact info</span></div>`;
+ const head=`<button class="btn" data-go="whoson" style="align-self:flex-start">${I("chevron-left")}Who's on</button><div class="tip">${I("lock")}<span>Suggestions only · names as in the Sheet · no contact info</span></div>`;
  if(cr.src==="unsupported")return head+`<div class="card stack" role="status"><div class="lbl">Who can cover needs the Apps Script update${chip("warn","Not shared yet")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script is an older version that doesn't serve the Coverage tab yet. Ask your GM to redeploy the latest Shift Hub Apps Script (v26). Everything else is live.</div></div>`;
- const crew=(cr.rows||[]).filter(x=>String(x.row_type||"").toUpperCase()!=="HEADER");
+ const crew=(cr.rows||[]).filter(x=>!/^(HEADER|NOTE)$/i.test(String(x.row_type||"").trim()));
  const op=shiftNow().op,d0=ymd(op),d1=(()=>{const d=new Date(op);d.setDate(d.getDate()+1);return ymd(d)})();
  const opts=rows.map((x,i)=>[i,x]).filter(([i,x])=>(x.date===d0||x.date===d1)&&x.position&&String(x.role).toLowerCase()!=="manager");
- const nq=(()=>{const d=new Date();return Math.ceil((d.getHours()*60+d.getMinutes())/15)*15%1440})(),hm=m=>String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0"),defS=hm(nq),defE=hm((nq+360)%1440);
  const sel=COV.sel===""&&opts.length?String(opts[0][0]):COV.sel;
+ const roles=[...new Map([...rows.map(x=>x.position),...crew.map(c=>parseSkills(c.positions_skills).role)].map(x=>String(x||"").trim()).filter(Boolean).map(x=>[x.toLowerCase(),x])).values()].sort((a,b)=>a.localeCompare(b));
+ const sts=[...new Set(STATIONS.concat(crew.flatMap(c=>Object.keys(parseSkills(c.positions_skills).st))))];
+ const nq=(()=>{const d=new Date();return Math.ceil((d.getHours()*60+d.getMinutes())/15)*15%1440})(),hm=m=>String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0"),defS=hm(nq),defE=hm((nq+360)%1440);
+ const o_=(v,l,on)=>`<option value="${esc(v)}"${on?" selected":""}>${esc(l)}</option>`;
  const form=`<div class="card stack"><div class="lbl">Shift to cover</div>
- <select id="cvsel" aria-label="Shift from roster" style="width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line,#d5dbe3);border-radius:12px;background:var(--card,#fff);color:inherit;font:inherit;font-size:16px"><option value="manual"${sel==="manual"?" selected":""}>Enter a position and time…</option>${opts.map(([i,x])=>`<option value="${i}"${String(i)===sel?" selected":""}>${esc(first(x.first_name))} · ${esc(x.position)} · ${x.date===d0?"Today":"Tomorrow"} ${clock(x.start,1)}–${clock(x.end,1)}</option>`).join("")}</select>
- <div id="cvman" class="stack" style="gap:8px${sel==="manual"?"":";display:none"}"><input id="cvpos" list="cvposl" placeholder="Position (e.g. Grill)" aria-label="Position" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="${esc(COV.pos)}"><datalist id="cvposl">${[...new Set(crew.flatMap(c=>String(c.positions_skills||"").split(",").map(x=>x.trim()).filter(Boolean)))].map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
+ <select id="cvsel" aria-label="Shift from roster" ${SEL}>${o_("manual","Enter a role and time…",sel==="manual")}${opts.map(([i,x])=>o_(i,`${dname(x.first_name)} · ${x.position} · ${x.date===d0?"Today":"Tomorrow"} ${clock(x.start,1)}–${clock(x.end,1)}`,String(i)===sel)).join("")}</select>
+ <div id="cvman" class="stack" style="gap:8px${sel==="manual"?"":";display:none"}"><label class="meta" style="margin:0;display:block;overflow:visible">Role<select id="cvrole" aria-label="Role" ${SEL}>${o_("","Choose a role…",!COV.role)}${roles.map(x=>o_(x,x,x===COV.role)).join("")}</select></label>
  <label class="meta" style="margin:0">Date<input id="cvdate" type="date" aria-label="Date" style="width:100%" value="${esc(COV.date||d0)}"></label><div style="display:flex;gap:8px"><label class="meta" style="flex:1;margin:0">Start<input id="cvs" type="time" step="900" aria-label="Start" value="${esc(COV.start||defS)}" style="width:100%"></label><label class="meta" style="flex:1;margin:0">End<input id="cve" type="time" step="900" aria-label="End" value="${esc(COV.end||defE)}" style="width:100%"></label></div></div>
+ <div style="display:flex;gap:8px"><label class="meta" style="flex:2;margin:0;display:block;overflow:visible">Station (optional)<select id="cvst" aria-label="Station" ${SEL}>${o_("","Any station",!COV.station)}${sts.map(x=>o_(x,x[0]+x.slice(1).toLowerCase(),x===COV.station)).join("")}</select></label>
+ <label class="meta" style="flex:1;margin:0;display:block;overflow:visible">Min level<select id="cvmin" aria-label="Minimum station level" ${SEL}>${[1,2,3,4,5].map(n=>o_(n,n===1?"Any":n+"+",String(n)===String(COV.min))).join("")}</select></label></div>
  <button class="btn primary block" type="button" data-act="cover">Find cover</button></div>`;
  if(!COV.ran)return head+form+(crew.length?"":`<p class="upd" style="padding:0;text-align:center">No Coverage rows in the Sheet yet</p>`);
- let t;if(sel!=="manual"&&rows[+sel]){const x=rows[+sel];t={position:x.position,date:x.date,start:x.start,end:x.end,out:x.first_name}}else t={position:COV.pos,date:COV.date||d0,start:COV.start,end:COV.end};
- if(!String(t.position).trim())return head+form+`<p class="meta">Enter a position.</p>`;
+ let t;if(sel!=="manual"&&rows[+sel]){const x=rows[+sel];t={role:x.position,date:x.date,start:x.start,end:x.end,out:x.first_name}}else t={role:COV.role,date:COV.date||d0,start:COV.start||defS,end:COV.end||defE};
+ t.station=COV.station;t.min=COV.min;
+ if(!String(t.role).trim())return head+form+`<p class="meta">Choose a role.</p>`;
  const res=covRank(rows,crew,t);if(res.error)return head+form+`<p class="meta">${esc(res.error)}.</p>`;
- const sum=`<div class="card"><div class="lbl">${esc(t.position)} · ${esc(t.date)} ${clock(t.start,1)}–${clock(t.end,1)}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:5">${t.out?"Called out: <b>"+esc(first(t.out))+"</b> (not suggested). ":""}Projected = the higher of hours so far and scheduled hours this week, plus this shift. Must stay at or under 40 h. People with a caution (short rest, back-to-back, or availability note) are listed last.</div></div>`;
+ const sn=t.station?t.station[0]+t.station.slice(1).toLowerCase():"";
+ const sum=`<div class="card"><div class="lbl">${esc(t.role)}${sn?" · "+esc(sn)+(+t.min>1?" "+t.min+"+":""):""} · ${esc(t.date)} ${clock(t.start,1)}–${clock(t.end,1)}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:8">${t.out?"Called out: <b>"+esc(dname(t.out))+"</b> (not suggested). ":""}Matches Roster role exactly. Hours = scheduled hours this week (or hours so far if higher, when the Sheet has them) plus this shift; must stay at or under 40 h. People with a caution are listed last.${res.late?" <b>Runs past 10 PM:</b> among people without a caution, higher Window / Grill regular menu level (per Harri) comes first, then hours.":""}</div></div>`;
+ const lv=n=>n===null||n===undefined?"—":n===0?"listed, no level":"level "+n;
  const card=o=>`<div class="row" style="display:block;padding:10px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(o.name)}</b>${chip(o.proj>40?"bad":o.proj>=36?"warn":"good",h1(o.proj)+" h projected")}</div>
-  <div class="meta" style="margin:2px 0 0">So far ${h1(o.so)} h · scheduled ${h1(o.sch)} h · used ${o.basis} (${h1(o.base)} h) + ${h1(res.len)} h</div>${o.warn&&o.warn.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0">${o.warn.map(w=>chip("warn",w)).join("")}</div>`:""}${o.notes?`<div class="meta" style="margin:2px 0 0">Availability: ${esc(o.notes)}</div>`:""}
+  <div class="meta" style="margin:2px 0 0">${esc(o.role||"No role listed")}${t.station?` · ${esc(sn)}: ${lv(o.lvl)} <small>(per Harri)</small>`:""}${res.late&&!t.station?` · Window/Grill: ${o.lateLvl?"level "+o.lateLvl:"—"} <small>(per Harri)</small>`:""}</div>
+  <div class="meta" style="margin:2px 0 0">${o.sch!==null?"Scheduled "+h1(o.sch)+" h":"Scheduled hours not in Sheet"}${o.so!==null?" · so far "+h1(o.so)+" h":""} · used ${o.basis==="none"?"0 h (no hours in Sheet)":o.basis+" ("+h1(o.base)+" h)"} + ${h1(res.len)} h</div>
+  ${o.warn&&o.warn.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0">${o.warn.map(w=>chip("warn",w)).join("")}</div>`:""}${o.notes?`<div class="meta" style="margin:2px 0 0">Availability: ${esc(o.notes)}</div>`:""}
   ${o.why.length?`<div class="meta" style="margin:2px 0 0">Excluded: ${o.why.map(w=>w==="overlap"?"overlap ("+o.ov.map(r=>esc(r.position||"shift")+" "+clock(r.start,1)+"–"+clock(r.end,1)+(r.date!==t.date?" "+esc(r.date):"")).join(", ")+")":esc(w)).join(" · ")}</div>`:""}</div>`;
  return head+form+sum+`<div class="sec">Can cover (${res.ok.length})</div>`+(res.ok.length?`<div class="list">${res.ok.map(card).join("")}</div>`:empty("No one fits this shift"))+
   (res.no.length?`<details class="card"><summary class="row"><span class="v txt">Not suggested (${res.no.length})</span>${I("chevron-down","cv")}</summary><div class="list">${res.no.map(card).join("")}</div></details>`:"")};
@@ -436,7 +474,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v27";
+const APPVER="v28";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -529,7 +567,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  if(t.tagName==="BUTTON"&&t.dataset.act){if(t.dataset.busy)return;t.dataset.busy="1";t.disabled=true;setTimeout(()=>{t.disabled=false;delete t.dataset.busy},1500)}
  const clr=()=>app.querySelectorAll(".addbar input,.card.stack input").forEach(i=>{if(!/^fx/.test(i.id))i.value=""});
  try{const a=t.dataset.act;
- if(a==="cover"){COV={sel:v("cvsel")||"manual",pos:v("cvpos")||"",date:v("cvdate")||"",start:v("cvs")||"",end:v("cve")||"",ran:true};show("cover",{force:1});return}
+ if(a==="cover"){COV={sel:v("cvsel")||"manual",role:v("cvrole")||"",station:v("cvst")||"",min:v("cvmin")||"1",date:v("cvdate")||"",start:v("cvs")||"",end:v("cve")||"",ran:true};show("cover",{force:1});return}
  if(a==="key"){if(!v("k")){$("#k").focus();return}ShiftData.Key.set(v("k"));meta=null;KEYJUST=true;for(const k in VIEW)delete VIEW[k];await show("settings",{fresh:1});KEYJUST=false;return}
  if(a==="ping"){const o=$("#pingres");o.textContent="Checking…";try{const r=await ShiftData.ping();o.textContent=r.ok?"Script OK · compatible (script "+(r.version||"?")+")":"Script problem: "+r.error}catch(e){o.textContent="Couldn't reach the script ("+e.message+")"}return}
  if(a==="clearkey"){ShiftData.Key.set("");meta=null;for(const k in VIEW)delete VIEW[k];show("settings");return}
