@@ -37,7 +37,10 @@ async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-met
  const v=(m&&(m.last_updated||m.updated))||r0.last_updated||r0.updated||"";if(!v)return null;const d=new Date(v);return{v,d:isNaN(d)?null:d}}
 async function setUpd(tab,rows,live,r){if(tab==="Speed"&&cur==="rushes"&&live&&!(rows&&rows.length))return;r=r||{src:live?"live":"sample"};const u=$("#upd");
  if(!live){CUR={src:"sample",stale:false,tab};u.textContent="Sample data · not live";u.classList.remove("stale");return}
- const t=await syncTime(tab,rows);const stale=!!(t&&t.d&&Date.now()-t.d>staleMs(tab));CUR={src:r.src,stale,tab,at:r.at};
+ let t=await syncTime(tab,rows),thr=staleMs(tab);
+ // Rushes: if Speed has live rows with a newer sync time, show that time with Speed's threshold.
+ if(tab==="Events"&&cur==="rushes"){const sp=await within(ShiftData.load("Speed"),2500,null);if(sp&&sp.live&&sp.rows&&sp.rows.length){const t2=await syncTime("Speed",sp.rows);if(t2&&t2.d&&(!t||!t.d||t2.d>t.d)){t=t2;thr=staleMs("Speed")}}}
+ const stale=!!(t&&t.d&&Date.now()-t.d>thr);CUR={src:r.src,stale,tab,at:r.at};
  let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(stale?" · stale":""):"Last synced: not in Sheet";
  if(r.src==="cached"&&r.at)txt+=" · saved copy from "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached");TABST[cur]={c:Object.assign({},CUR),upd:txt,cls:stale||r.src==="cached"}}
@@ -307,12 +310,13 @@ S.inventory=async()=>{await toolSync();const rows=(await Floor.list("inventory")
   <button class="btn primary block" data-act="inv" data-i="${i}" data-item="${esc(o.item)}" data-unit="${esc(o.unit)}" data-par="${esc(o.par)}">Save count</button></div></div></details>`}).join("")}</div>`+
  store("inventory")+`<div class="addbar"><input id="ini" placeholder="New item" aria-label="New item"><input id="inu" placeholder="Unit" aria-label="Unit" style="max-width:28%"><input id="inp" type="number" inputmode="decimal" placeholder="Par" aria-label="Par" style="max-width:20%"><button class="btn primary sq" data-act="invnew" aria-label="Add item">${I("plus")}</button></div>`};
 const REASONS=["expired","hold time","dropped","wrong order"];
-S.waste=async()=>{await toolSync();const rows=await Floor.list("waste");const t=nowT().date;
+S.waste=async()=>{await within(toolSync(),2000,null);const lp=Floor.list("waste").then(v=>{try{localStorage.setItem("shifthub_flc_waste",JSON.stringify(v))}catch(e){}return v});let late=false;
+ const rows=await within(lp,2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE.waste||0)<30000)return;FLATE.waste=Date.now();if(cur==="waste"&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("waste")},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_waste")||"[]")}catch(e){return[]}});const t=nowT().date;
  const today=rows.filter(x=>x.date===t),tq=today.reduce((a,x)=>a+(n(x.qty)||0),0);
  const wk=new Date(Date.now()-7*864e5);const top={};rows.filter(x=>new Date(x.date+"T12:00:00")>=wk).forEach(x=>{const k=String(x.item).trim();top[k]=(top[k]||0)+(n(x.qty)||0)});
  const tops=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,3);
  const quick=["Fries","Patties","Nuggets","Buns","Chicken","Pies"].map(x=>`<button type="button" class="btn" data-fill="wi" data-v="${x}">${x}</button>`).join("");
- return back+oldCard("waste")+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
+ return back+oldCard("waste")+(late?`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`:"")+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
  <div class="card"><div class="lbl">Top 7 days</div>${tops.length?tops.map(([k,v])=>`<div class="meta" style="color:var(--ink-2)"><b>${esc(k)}</b> ${v}</div>`).join(""):`<div class="meta">Nothing logged</div>`}</div></div>
  <div class="card stack"><div class="lbl">Log waste</div><div class="quick">${quick}</div>
  <div style="display:flex;gap:8px"><input id="wi" placeholder="Item" aria-label="Item"><input id="wq" type="number" inputmode="decimal" value="1" aria-label="Quantity" style="max-width:30%"></div>
@@ -335,7 +339,7 @@ S.crewnotes=async()=>{await toolSync();const rows=(await Floor.list("crewnotes")
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v17";
+const APPVER="v18";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -421,6 +425,7 @@ app.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".addbar
 $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
 window.addEventListener("shifthub:data",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools"].includes(cur))show(cur)});
 setSrc(false);show("home");
+if(window.caches)caches.keys().then(ks=>ks.filter(k=>k.startsWith("shifthub-")&&k!=="shifthub-"+APPVER).forEach(k=>caches.delete(k))).catch(()=>{});
 if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.controller;
  // New version took over: reload once. Guard: only if a worker controlled the page at load, and not twice within 10s.
  sw.addEventListener("controllerchange",()=>{if(!had)return;const t=+sessionStorage.getItem("shifthub_swreload")||0;if(Date.now()-t<10000)return;
