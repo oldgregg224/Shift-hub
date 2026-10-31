@@ -22,14 +22,18 @@ const TIMEOUT=30000,SAMPLE_TIMEOUT=20000,FRESH_TTL=60000,BACKOFF=[5000,15000,450
 async function fetchT(u,opt,ms=TIMEOUT){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);
  try{return await fetch(u,Object.assign({signal:c.signal},opt))}catch(e){throw new Error(e.name==="AbortError"?"timed out":"offline or unreachable")}finally{clearTimeout(t)}}
 // One live GET at a time: parallel calls queue up behind each other instead of racing the timeout.
-let chain=Promise.resolve();
-function serial(fn){const p=chain.then(fn,fn);chain=p.catch(()=>{});return p}
+// Priority: requests for the active screen (focus keys) jump ahead of background/other-screen requests.
+const Q=[];let busy=false,focus=new Set();
+function pump(){if(busy||!Q.length)return;let i=Q.findIndex(x=>focus.has(x.key));if(i<0)i=0;const it=Q.splice(i,1)[0];busy=true;
+ Promise.resolve().then(it.fn).then(it.res,it.rej).finally(()=>{busy=false;pump()})}
+function serial(fn,key){return new Promise((res,rej)=>{Q.push({fn,key,res,rej});pump()})}
+function setFocus(keys){focus=new Set(keys||[])}
 async function api_(params,body){const u=new URL(url());
  Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));u.searchParams.set("key",Key.get());
  // GET follows Apps Script's redirect; POST uses text/plain to avoid a CORS preflight.
  const r=await fetchT(u,body?{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body),redirect:"follow"}:{redirect:"follow",cache:"no-store"});
  let j;try{j=await r.json()}catch(e){throw new Error("bad response")}if(j.error)throw new Error(j.error);return j}
-const api=(params,body)=>body?api_(params,body):serial(()=>api_(params));
+const api=(params,body)=>body?api_(params,body):serial(()=>api_(params),params.kind||params.tab);
 // Last good live rows per tab: memory + localStorage (dashboard data only; no key, no guest personal info beyond what the Sheet shows).
 const LK=t=>"shifthub_live_"+t,good={},fail={},inflight={},timers={},unsup={};
 function getGood(t){if(good[t])return good[t];try{const o=JSON.parse(localStorage.getItem(LK(t))||"null");if(o&&Array.isArray(o.rows))return good[t]=o}catch(e){}return null}
@@ -66,5 +70,5 @@ async function load(t,o={}){
  catch(e){if(unsup[t])return{rows:[],live:true,src:"unsupported",at:0};const g2=getGood(t);if(g2&&st.bad!=="key")return{rows:g2.rows,live:true,src:"cached",at:g2.t};return sample(t)}}
 const cached=t=>!!getGood(t);
 const failed=t=>fail[t]||null,unsupported=t=>unsup[t]||"";
-window.ShiftData={load,reset,cached,failed,unsupported,api,live,Key,status:st,hasUrl:()=>!!url()};
+window.ShiftData={setFocus,load,reset,cached,failed,unsupported,api,live,Key,status:st,hasUrl:()=>!!url()};
 })();

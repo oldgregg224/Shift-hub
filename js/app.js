@@ -194,7 +194,7 @@ async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return 
  r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${isNaN(l)?"":chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div>${isNaN(l)?"":`<div class="meta">last week ${l}</div>`}</div>`}).join("")+
  (cm.length?`<details class="card more"><summary>Survey low-score comments: ${cm.length}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")+cmt},
 
-async floor(){FLATE=FLATE||{};await within(toolSync(),2000,null);const F=window.Floor;const sub=floorSub;
+async floor(){FLATE=FLATE||{};const TS=within(toolSync(),2000,null);const F=window.Floor;const sub=floorSub;const RP=sub==="positions"?within(roster(),2200,()=>({rows:[]})):null;
  const tabs=[["positions","Positions"],["breaks","Breaks"],["checklist","Checklist"],["fixes","Fixes"],["handoff","Notes"]];
  const seg=`<div class="seg" role="tablist">${tabs.map(([k,l])=>`<button type="button" role="tab" data-sub="${k==="handoff"?"notes":k}" class="${k===sub?"on":""}" aria-selected="${k===sub}">${l}</button>`).join("")}</div>`;
  const lp=F.list(sub).then(v=>{try{localStorage.setItem("shifthub_flc_"+sub,JSON.stringify(v))}catch(e){}return v});let late=false;
@@ -205,7 +205,7 @@ async floor(){FLATE=FLATE||{};await within(toolSync(),2000,null);const F=window.
  if(sub==="positions"){const now=shiftNow(),sl=(SHIFTS.find(x=>x[0]===now.shift)||[])[1];
   const today=rows.filter(x=>!x.date||x.date===now.date&&(!x.shift||x.shift===now.shift));
   const placed={};today.forEach(x=>placed[String(x.name).toLowerCase()]=x.position);
-  let crew=[];try{crew=(await within(roster(),1500,()=>({rows:[]}))).rows.filter(x=>x.date===now.date&&x.shift===now.shift).sort((a,b)=>(String(b.role).toLowerCase()==="manager")-(String(a.role).toLowerCase()==="manager"))}catch(e){}
+  let crew=[];try{crew=(await RP).rows.filter(x=>x.date===now.date&&x.shift===now.shift).sort((a,b)=>(String(b.role).toLowerCase()==="manager")-(String(a.role).toLowerCase()==="manager"))}catch(e){}
   POSOPTS=[...new Set([...crew.filter(x=>String(x.role).toLowerCase()!=="manager").map(x=>String(x.position||"").trim()),...rows.map(x=>String(x.position||"").trim()),"Grill","Fries","Front counter","Drive-thru order","Drive-thru window","Lobby"].filter(Boolean))];
   body=(today.length?`<div class="sec">Placed now</div><div class="list">${today.map(x=>`<div class="row"><span class="v txt">${esc(x.position)}</span><b>${esc(first(x.name))}</b></div>`).join("")}</div>`:empty("No one placed on this shift yet. Tap Place next to a crew member below."))+
   `<div class="sec">On the roster · ${esc(sl||"")}</div>`+(crew.length?`<div class="list">${crew.map((x,i)=>{const nm=first(x.first_name),pl=placed[nm.toLowerCase()];
@@ -221,7 +221,7 @@ async floor(){FLATE=FLATE||{};await within(toolSync(),2000,null);const F=window.
   bar=`<input id="fi" placeholder="Fix to do" aria-label="Fix"><button class="btn primary sq" data-act="fix" aria-label="Add">${I("plus")}</button>`}
  if(sub==="handoff"){body=rows.length?`<div class="list">${rows.slice(-10).reverse().map(x=>`<div class="row" style="display:block;padding:12px 0"><div class="note-ts">${new Date(x.ts).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>${esc(x.note)}</div>`).join("")}</div>`:empty("No handoff notes yet. Leave one for the next manager below.");
   bar=`<input id="hn" placeholder="Note for next manager" aria-label="Note"><button class="btn primary sq" data-act="hand" aria-label="Save note">${I("plus")}</button>`}
- return back+seg+body+(late?`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`:store)+`<div class="addbar">${bar}</div>`}
+ await TS;return back+seg+body+(late?`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`:store)+`<div class="addbar">${bar}</div>`}
 };
 // ---- Guest comments ----
 // Display-side scrub for guest text: emails, phone numbers, long digit runs (order/card numbers).
@@ -291,7 +291,12 @@ const PICK={reason:"expired",ntype:"training"};
 S.tools=async()=>{await toolSync();
  return TOOLS.map(([k,l,ic,m])=>`<button class="card tool" type="button" data-go="${k}">${I(ic)}<span><b>${l}</b><span class="meta">${m}</span></span>${I("chevron-right","cv")}</button>`).join("")};
 const SEED=[["Buns","cases",12],["Patties","cases",10],["Fries","cases",15],["Nuggets","cases",8],["Cups","sleeves",20],["Lids","sleeves",20],["Sauce","boxes",6]];
-S.inventory=async()=>{await toolSync();const rows=(await Floor.list("inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
+// Bounded Tools list: answer within ~2.2s from the live list or this phone's last saved copy; repaint once when late data lands.
+const LATE={};
+async function blist(kind,screen){const lp=Floor.list(kind).then(v=>{try{localStorage.setItem("shifthub_flc_"+kind,JSON.stringify(v))}catch(e){}return v});
+ return within(lp,2200,()=>{LATE[kind]=1;lp.then(()=>{if(Date.now()-(FLATE[kind]||0)<30000)return;FLATE[kind]=Date.now();if(cur===screen&&!document.querySelector("#app input:focus")&&!$("#sheet"))show(screen)},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_"+kind)||"[]")}catch(e){return[]}})}
+const lateNote=k=>LATE[k]?(delete LATE[k],`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`):"";
+S.inventory=async()=>{const TS=within(toolSync(),2000,null);const rows=(await blist("inventory","inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
  const by={};SEED.forEach(([i,u,p])=>by[i.toLowerCase()]={item:i,unit:u,par:p,hist:[]});
  rows.forEach(x=>{const k=String(x.item).trim().toLowerCase();if(!k)return;const o=by[k]||(by[k]={item:x.item,unit:x.unit,par:"",hist:[]});if(x.unit)o.unit=x.unit;if(x.par!==""&&x.par!=null)o.par=n(x.par);if(x.on_hand!==""&&x.on_hand!=null)o.hist.push({q:n(x.on_hand),t:new Date(x.ts)})});
  const items=Object.values(by);
@@ -303,29 +308,29 @@ S.inventory=async()=>{await toolSync();const rows=(await Floor.list("inventory")
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span><b>Used</b> ${used} vs <b>expected</b> ${exp.toFixed(1)} ${esc(o.unit)}</span>${chip(st,st==="good"?"On track":diff>0?"Over":"Under")}</div>`};
  const st=o=>{const q=o.hist.length?o.hist[o.hist.length-1].q:NaN;if(isNaN(q)||!o.par)return["neutral","Not counted"];return q<o.par*.5?["bad","Low"]:q<o.par?["warn","Below par"]:["good","OK"]};
  const order=items.filter(o=>o.hist.length&&o.par&&o.par-o.hist[o.hist.length-1].q>0);
- return back+oldCard("inventory")+(order.length?`<div class="card"><div class="lbl">Order list${chip("warn",order.length+(order.length>1?" items":" item"))}</div>${order.map(o=>`<div class="row"><span class="v txt">${esc(o.item)}</span><b>${esc(qu(o.par-o.hist[o.hist.length-1].q,o.unit))}</b></div>`).join("")}</div>`:"")+
+ await TS;return back+oldCard("inventory")+lateNote("inventory")+(order.length?`<div class="card"><div class="lbl">Order list${chip("warn",order.length+(order.length>1?" items":" item"))}</div>${order.map(o=>`<div class="row"><span class="v txt">${esc(o.item)}</span><b>${esc(qu(o.par-o.hist[o.hist.length-1].q,o.unit))}</b></div>`).join("")}</div>`:"")+
  `<div class="sec">Counts</div><div class="list">${items.map((o,i)=>{const q=o.hist.length?o.hist[o.hist.length-1].q:"";const [s,w]=st(o);
   return `<details><summary class="row"><span class="v txt">${esc(o.item)}<small>${q===""?"—":q} of ${esc(o.par?qu(o.par,o.unit):"— "+o.unit)}${o.hist.length?" · "+o.hist[o.hist.length-1].t.toLocaleDateString("en-US",{weekday:"short"}):""}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
   <div class="det" style="padding-left:0"><div class="stack" style="gap:8px">${usage(o)}<div style="display:flex;gap:8px"><input id="ioh${i}" type="number" inputmode="decimal" placeholder="On hand" aria-label="On hand"><input id="ipar${i}" type="number" inputmode="decimal" placeholder="Par ${o.par||""}" aria-label="Par"></div>
   <button class="btn primary block" data-act="inv" data-i="${i}" data-item="${esc(o.item)}" data-unit="${esc(o.unit)}" data-par="${esc(o.par)}">Save count</button></div></div></details>`}).join("")}</div>`+
  store("inventory")+`<div class="addbar"><input id="ini" placeholder="New item" aria-label="New item"><input id="inu" placeholder="Unit" aria-label="Unit" style="max-width:28%"><input id="inp" type="number" inputmode="decimal" placeholder="Par" aria-label="Par" style="max-width:20%"><button class="btn primary sq" data-act="invnew" aria-label="Add item">${I("plus")}</button></div>`};
 const REASONS=["expired","hold time","dropped","wrong order"];
-S.waste=async()=>{await within(toolSync(),2000,null);const lp=Floor.list("waste").then(v=>{try{localStorage.setItem("shifthub_flc_waste",JSON.stringify(v))}catch(e){}return v});let late=false;
+S.waste=async()=>{const TS=within(toolSync(),2000,null);const lp=Floor.list("waste").then(v=>{try{localStorage.setItem("shifthub_flc_waste",JSON.stringify(v))}catch(e){}return v});let late=false;
  const rows=await within(lp,2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE.waste||0)<30000)return;FLATE.waste=Date.now();if(cur==="waste"&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("waste")},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_waste")||"[]")}catch(e){return[]}});const t=nowT().date;
  const today=rows.filter(x=>x.date===t),tq=today.reduce((a,x)=>a+(n(x.qty)||0),0);
  const wk=new Date(Date.now()-7*864e5);const top={};rows.filter(x=>new Date(x.date+"T12:00:00")>=wk).forEach(x=>{const k=String(x.item).trim();top[k]=(top[k]||0)+(n(x.qty)||0)});
  const tops=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,3);
  const quick=["Fries","Patties","Nuggets","Buns","Chicken","Pies"].map(x=>`<button type="button" class="btn" data-fill="wi" data-v="${x}">${x}</button>`).join("");
- return back+oldCard("waste")+(late?`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`:"")+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
+ await TS;return back+oldCard("waste")+(late?`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`:"")+`<div class="grid"><div class="card"><div class="lbl">Today</div><div class="hero sm">${tq}</div><div class="meta">items wasted · ${today.length} ${today.length===1?"entry":"entries"}</div></div>
  <div class="card"><div class="lbl">Top 7 days</div>${tops.length?tops.map(([k,v])=>`<div class="meta" style="color:var(--ink-2)"><b>${esc(k)}</b> ${v}</div>`).join(""):`<div class="meta">Nothing logged</div>`}</div></div>
  <div class="card stack"><div class="lbl">Log waste</div><div class="quick">${quick}</div>
  <div style="display:flex;gap:8px"><input id="wi" placeholder="Item" aria-label="Item"><input id="wq" type="number" inputmode="decimal" value="1" aria-label="Quantity" style="max-width:30%"></div>
  ${pick("reason",REASONS,PICK.reason)}<button class="btn primary block" data-act="waste">Log it</button></div>
  <div class="sec">Today's log</div>${today.length?`<div class="list">${today.slice().reverse().map(x=>`<div class="row"><span class="t">${clock(x.time,1)}</span><span class="v txt">${esc(x.qty)} × ${esc(x.item)}</span>${chip("neutral",x.reason)}</div>`).join("")}</div>`:empty("Nothing wasted yet today")}`+store("waste")};
 const EQS={"open":["bad","Open"],"in progress":["warn","In progress"],"fixed":["good","Fixed"]};
-S.equipment=async()=>{await toolSync();const rows=(await Floor.list("equipment")).slice().reverse();
+S.equipment=async()=>{const TS=within(toolSync(),2000,null);const rows=(await blist("equipment","equipment")).slice().reverse();
  const ord=x=>({open:0,"in progress":1,fixed:2}[x.status]??0);rows.sort((a,b)=>ord(a)-ord(b));const open=rows.filter(x=>x.status!=="fixed").length;
- return back+oldCard("equipment")+`<div class="card stack"><div class="lbl">Report an issue${chip(open?"warn":"good",open?open+" open":"All fixed")}</div>
+ await TS;return back+oldCard("equipment")+lateNote("equipment")+`<div class="card stack"><div class="lbl">Report an issue${chip(open?"warn":"good",open?open+" open":"All fixed")}</div>
  <input id="eqe" placeholder="Equipment (e.g. Fry vat 2)" aria-label="Equipment"><input id="eqi" placeholder="What's wrong" aria-label="Issue"><input id="eqr" placeholder="Reported by (first name)" aria-label="Reported by">
  <button class="btn primary block" data-act="eq">Report</button></div>
  ${rows.length?`<div class="list">${rows.map(x=>{const [s,w]=EQS[x.status]||EQS.open;return `<details><summary class="row"><span class="v txt">${esc(x.equipment)}<small>${esc(x.issue)}</small></span>${chip(s,w)}${I("chevron-down","cv")}</summary>
@@ -333,13 +338,13 @@ S.equipment=async()=>{await toolSync();const rows=(await Floor.list("equipment")
  ${x.status==="fixed"?"":`<div class="stack" style="gap:8px;margin-top:8px"><input id="fx${esc(x.id)}" placeholder="Fixer (first name)" value="${esc(x.fixer||"")}" aria-label="Fixer">
  <div style="display:flex;gap:8px">${x.status!=="in progress"?`<button class="btn" style="flex:1" data-eq="${esc(x.id)}" data-st="in progress">In progress</button>`:""}<button class="btn primary" style="flex:1" data-eq="${esc(x.id)}" data-st="fixed">Fixed</button></div></div>`}</div></details>`}).join("")}</div>`:empty("No equipment issues")}`+store("equipment")};
 const NTYPES=["training","ready to promote","call-out","praise"];const NST={"training":"neutral","ready to promote":"good","call-out":"warn","praise":"good"};
-S.crewnotes=async()=>{await toolSync();const rows=(await Floor.list("crewnotes")).slice().reverse();
- return back+oldCard("crewnotes")+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
+S.crewnotes=async()=>{const TS=within(toolSync(),2000,null);const rows=(await blist("crewnotes","crewnotes")).slice().reverse();
+ await TS;return back+oldCard("crewnotes")+lateNote("crewnotes")+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
  <div class="card stack"><div class="lbl">New note</div><input id="cnn" placeholder="First name" aria-label="First name">
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v18";
+const APPVER="v19";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -380,11 +385,13 @@ function tick(){document.querySelectorAll("[data-since]").forEach(el=>{const m=M
 // Stale-while-revalidate: paint the last HTML for this screen at once, then swap in fresh HTML if it changed.
 // seq guards against a slow load overwriting a screen the user has already left.
 const VIEW={};let seq=0,shown="";
-async function show(s,o={}){const my=++seq,moved=shown!==s;cur=s;shown=s;$("#title").textContent=TITLE[s];
+const FOCUS={home:["Brief","Labor","Roster","Meta"],whoson:["Roster","Meta"],labor:["Labor","Brief","Meta"],rushes:["Events","Speed","Meta"],speed:["Speed","Meta"],guest:["SMG","Comments","Brief","Meta"],tools:["Brief","Meta"]};
+async function show(s,o={}){const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,moved=shown!==vk;cur=s;shown=vk;
+ try{ShiftData.setFocus(s==="floor"?[floorSub,"Roster","Brief","Meta"]:FOCUS[s]||[s,"Brief","Meta"])}catch(e){}$("#title").textContent=TITLE[s];
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
- const had=!o.fresh&&VIEW[s];if(had)app.innerHTML=VIEW[s];else if(moved||o.fresh)app.innerHTML=empty("Loading…");
+ const had=!o.fresh&&VIEW[vk];if(had)app.innerHTML=VIEW[vk];else if(moved||o.fresh)app.innerHTML=empty("Loading…");
  if(moved)scrollTop_(s);
- try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(h!==VIEW[s]||!had){app.innerHTML=h;VIEW[s]=h;if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[s];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
+ try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(h!==VIEW[vk]||!had){app.innerHTML=h;VIEW[vk]=h;if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[vk];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
 }
 // Pill + Last synced always reflect the screen on show, even if another screen's late load touched them.
