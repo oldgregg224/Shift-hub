@@ -25,19 +25,32 @@ const kpi=(lbl,val,meta,st,word,go,sm)=>`<button class="card" type="button" ${go
 const qu=(q,u)=>{u=String(u||"");return q+" "+(Math.abs(n(q))===1&&/[^s]s$/i.test(u)?u.replace(/es$/i,m=>/(box|sh|ch)es$/i.test(u)?"":"e").replace(/s$/i,""):u)};
 const empty=t=>`<p class="empty">${esc(t)}</p>`;
 
-let meta=null;
-async function setUpd(tab,rows,live){if(live===false){$("#upd").textContent="Sample data · not live";return}try{if(!meta)meta=(await ShiftData.load("Meta")).rows}catch(e){meta=[]}
- const m=meta.find(x=>x.tab===tab);const v=(m&&m.last_updated)||(rows[0]&&rows[0].last_updated)||"";
- const d=new Date(v);$("#upd").textContent=v?"Updated "+(isNaN(d)?v:d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})):""}
-const keyMsg=()=>({key:"Key didn't work, using sample data",net:"Couldn't reach live data, using sample data"})[ShiftData.status.bad]||"";
+let meta=null,metaAt=0;
+// Last synced time for a tab: Meta.last_updated for that tab, else the rows' own last_updated / updated column.
+const fmtT=d=>d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
+const STALE=90*60000;
+let CUR={src:"sample",stale:false,tab:""};
+async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-metaAt>60000)){try{const r=await ShiftData.load("Meta");if(r.live){meta=r.rows;metaAt=Date.now()}}catch(e){}}
+ const m=(meta||[]).find(x=>x.tab===tab);const r0=(rows||[]).find(x=>x&&(x.last_updated||x.updated))||{};
+ const v=(m&&(m.last_updated||m.updated))||r0.last_updated||r0.updated||"";if(!v)return null;const d=new Date(v);return{v,d:isNaN(d)?null:d}}
+async function setUpd(tab,rows,live,r){r=r||{src:live?"live":"sample"};const u=$("#upd");
+ if(!live){CUR={src:"sample",stale:false,tab};u.textContent="Sample data · not live";u.classList.remove("stale");return}
+ const t=await syncTime(tab,rows);const stale=!!(t&&t.d&&Date.now()-t.d>STALE);CUR={src:r.src,stale,tab,at:r.at};
+ let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(stale?" · stale":""):"Last synced: not in Sheet";
+ if(r.src==="cached"&&r.at)txt+=" · saved copy from "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+ u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached")}
+const keyMsg=()=>{const b=ShiftData.status.bad;if(b==="key")return "Key didn't work, using sample data";
+ if(CUR.src==="cached")return "Couldn't refresh, showing saved live data";if(b==="net"&&CUR.src==="sample"&&ShiftData.Key.get())return "Couldn't reach live data, using sample data";return ""};
 function keyBanner(){let b=$("#keybanner");const m=keyMsg();if(!b){b=document.createElement("p");b.id="keybanner";b.className="err";b.setAttribute("role","alert");b.style.margin="0 16px 8px";$("#upd").after(b)}
  b.hidden=!m;b.textContent=m?(ShiftData.status.bad==="key"?"Shared key didn't work. Open Settings and re-enter it.":m+". Retrying automatically."):""}
-function setSrc(live){keyBanner();const p=$("#src");p.classList.toggle("live",live);const bad=ShiftData.status.bad;p.classList.toggle("bad",!!bad);
- const has=!!ShiftData.Key.get();p.dataset.label=live?"Live":bad==="key"?"Key didn't work":bad?"Offline · sample":(has?"Sample · check key":"Sample · add key");
- p.setAttribute("aria-label",(live?"Live data":keyMsg()||"Sample data")+". Open settings")}
-const keyAlert=()=>keyMsg()?`<button class="alert" type="button" data-go="settings">${I("siren")}<div><b>${esc(keyMsg())}</b><span>Tap to check the key in Settings</span></div></button>`:"";
+function setSrc(live,src){if(src)CUR.src=src;else if(!live)CUR.src="sample";else if(CUR.src==="sample")CUR.src="live";
+ keyBanner();const p=$("#src"),s=CUR.src,bad=ShiftData.status.bad,has=!!ShiftData.Key.get();
+ const isLive=s==="live"&&!CUR.stale;p.classList.toggle("live",isLive);p.classList.toggle("bad",s==="sample"&&!!bad);
+ p.dataset.label=s==="live"?(CUR.stale?"Live · stale":"Live"):s==="cached"?"Cached":bad==="key"?"Key didn't work":(has&&ShiftData.hasUrl()?(bad?"Offline · sample":"Sample"):"Sample · add key");
+ p.setAttribute("aria-label",(s==="live"?"Live data":s==="cached"?"Saved live data":keyMsg()||"Sample data")+". Open settings")}
+const keyAlert=()=>ShiftData.status.bad==="key"||(CUR.src==="sample"&&keyMsg())?`<button class="alert" type="button" data-go="settings">${I("siren")}<div><b>${esc(keyMsg())}</b><span>Tap to check the key in Settings</span></div></button>`:"";
 let LIVE=false;
-async function get(tab){const r=await ShiftData.load(tab);LIVE=r.live;setSrc(r.live);await setUpd(tab,r.rows,r.live);return r.rows}
+async function get(tab){const r=await ShiftData.load(tab);LIVE=r.live;CUR.src=r.src;await setUpd(tab,r.rows,r.live,r);setSrc(r.live,r.src);return r.rows}
 // "Now" row: live = latest row; sample = row for the current clock hour, clamped to the sample's range.
 function nowRow(r){if(LIVE)return{x:r[r.length-1],lbl:"Now · "+clock(r[r.length-1].hour)};
  const h=new Date().getHours(),hs=r.map(x=>parseInt(x.hour,10));let i=hs.findIndex(v=>v===h);
@@ -50,15 +63,16 @@ async function whoHome(){try{const {rows}=await roster(),now=shiftNow();const sr
 const S={
 async home(){const r=await get("Brief"),b=r[0]||{};
  const sa=n(b.sales_actual),sp=n(b.sales_projection),la=n(b.labor_actual_pct),lp=n(b.labor_projection_pct);
- const ss=status(sa,sp,"sales"),ls=status(la,lp,"labor");
+ const ss=isNaN(sp)?"neutral":status(sa,sp,"sales"),ls=isNaN(lp)?"neutral":status(la,lp,"labor");
+ const na=v=>/^\s*n\/?a\b/i.test(String(v??"").replace(/^EXAMPLE:\s*/i,""));const odNA=na(b.overdue_checklists);
  const ot=listCount(b.overtime_watch_first_names),od=listCount(b.overdue_checklists),cm=n(b.new_smg_comment_count)||0,hr=n(b.open_harri_requests)||0;
  const rush=b.rush_banner?`<div class="alert">${I("siren")}<div><b>${esc(b.rush_banner)}</b><span>Rush today</span></div></div>`:"";
  return keyAlert()+rush+
- kpi("Sales",money(sa),"of "+money(sp)+" projected",ss,(isNaN(sa-sp)?"":(sa-sp<0?"−":"+")+money(Math.abs(sa-sp))+" · ")+({good:"Ahead",warn:"Behind",bad:"Behind"}[ss]||""),null)+
- kpi("Labor",pct(la),"target "+pct(lp),ls,(isNaN(la-lp)?"":sgn(la-lp,1)+" · ")+({good:"On target",warn:"Watch",bad:"Over"}[ls]||""),"labor")+
+ kpi("Sales",money(sa),isNaN(sp)?"":"of "+money(sp)+" projected",ss,(isNaN(sa-sp)?"":(sa-sp<0?"−":"+")+money(Math.abs(sa-sp))+" · ")+({good:"Ahead",warn:"Behind",bad:"Behind"}[ss]||""),null)+
+ kpi("Labor",pct(la),isNaN(lp)?"":"target "+pct(lp),ls,(isNaN(la-lp)?"":sgn(la-lp,1)+" · ")+({good:"On target",warn:"Watch",bad:"Over"}[ls]||""),"labor")+
  `<div class="grid">`+
  kpi("Overtime",ot,ot?b.overtime_watch_first_names:"No one close",status(ot,0,"count"),ot?"Watch":"Clear","floor",1)+
- kpi("Overdue",od,od?b.overdue_checklists:"All checklists done",od?"bad":"good",od?"Late":"Clear","floor",1)+
+ (odNA?kpi("Overdue","n/a","No checklist source",null,null,"floor",1):kpi("Overdue",od,od?b.overdue_checklists:"All checklists done",od?"bad":"good",od?"Late":"Clear","floor",1))+
  kpi("Guest notes",cm,"new comments",null,null,"guest",1)+
  kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+await whoHome()},
 
@@ -159,10 +173,10 @@ async function roster(){const r=await ShiftData.load("Roster");let rows=(r.rows|
  if(!r.live&&rows.length){// sample: move EXAMPLE dates so the first one is "today"
   const base=rows.map(x=>x.date).sort()[0],op=shiftNow().op;const b=new Date(base+"T12:00:00");
   rows=rows.map(x=>{const d=new Date(x.date+"T12:00:00");const o=new Date(op);o.setDate(o.getDate()+Math.round((d-b)/864e5));return Object.assign({},x,{date:ymd(o)})})}
- return{rows,live:r.live}}
+ return{rows,live:r.live,r}}
 const first=s=>String(s||"").trim().split(/\s+/)[0];
 let whoDay=0;
-S.whoson=async()=>{const {rows,live}=await roster();setSrc(live);await setUpd("Roster",rows,live);
+S.whoson=async()=>{const {rows,live,r}=await roster();CUR.src=r.src;await setUpd("Roster",rows,live,r);setSrc(live,r.src);
  const now=shiftNow(),d=new Date(now.op);d.setDate(d.getDate()+whoDay);const day=ymd(d);
  const seg=`<div class="seg" role="tablist">${["Today","Tomorrow"].map((l,i)=>`<button type="button" role="tab" data-who="${i}" class="${i===whoDay?"on":""}" aria-selected="${i===whoDay}">${l}</button>`).join("")}</div>`;
  const dayRows=rows.filter(x=>x.date===day);
@@ -180,7 +194,7 @@ const store=()=>`<p class="upd" style="padding:0;text-align:center">${ShiftData.
 const nowT=()=>{const d=new Date();return{date:ymd(d),time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}};
 const pick=(g,opts,cur)=>`<div class="seg" data-group="${g}">${opts.map(o=>`<button type="button" data-pick="${esc(o)}" class="${o===cur?"on":""}">${esc(o[0].toUpperCase()+o.slice(1))}</button>`).join("")}</div>`;
 const PICK={reason:"expired",ntype:"training"};
-S.tools=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());
+S.tools=async()=>{try{const r=await ShiftData.load("Brief");await setUpd("Brief",r.rows,r.live,r);setSrc(r.live,r.src)}catch(e){$("#upd").textContent=""}
  return TOOLS.map(([k,l,ic,m])=>`<button class="card tool" type="button" data-go="${k}">${I(ic)}<span><b>${l}</b><span class="meta">${m}</span></span>${I("chevron-right","cv")}</button>`).join("")};
 const SEED=[["Buns","cases",12],["Patties","cases",10],["Fries","cases",15],["Nuggets","cases",8],["Cups","sleeves",20],["Lids","sleeves",20],["Sauce","boxes",6]];
 S.inventory=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const rows=(await Floor.list("inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
@@ -230,18 +244,20 @@ S.crewnotes=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const ro
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store()};
 
-const APPVER="v11";
+const APPVER="v12";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
+let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();setSrc(ShiftData.live());
- await ShiftData.load("Brief").catch(()=>{});setSrc(ShiftData.live());const bad=ShiftData.status.bad;
+ {const r=await ShiftData.load("Brief").catch(()=>null);if(r)setSrc(r.live,r.src);else setSrc(ShiftData.live())}const bad=ShiftData.status.bad;
  const c=!has?chip("warn","Not set"):bad==="key"?chip("bad","Didn't work"):bad?chip("warn","Can't reach"):ShiftData.live()?chip("good","Working"):chip("neutral","Saved");
  return `<div class="card stack"><div class="lbl">Shared key${c}</div>
+ ${has?`<p class="ok" role="status" id="keysaved">${I("check")} Key saved on this phone${KEYJUST?" just now":""}</p>`:""}
  ${bad?`<p class="err" role="alert">${esc(keyMsg())}.${bad==="key"?" Check the key with your GM and enter it again.":" Check your connection and try again."}</p>`:""}
  <div class="meta" style="-webkit-line-clamp:3">Data link ${ShiftData.hasUrl()?"is set":"is not set yet"}. ${has?(ShiftData.live()?"Showing live data.":"Showing sample data."):"Showing sample data until the key is saved."}</div>
  <input id="k" type="password" autocomplete="off" placeholder="Enter shared key" aria-label="Shared key">
  <button class="btn primary block" data-act="key">Save key</button>
  <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>
- <div class="meta" id="ver" style="text-align:center;opacity:.7">Shift Hub ${APPVER}${await swCache()}</div>`};
+ <div class="ver" id="ver">Shift Hub ${APPVER}${await swCache()}</div>`};
 
 const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",settings:"Settings"};
 const TABOF={floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools"};
@@ -286,7 +302,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  const sb=e.target.closest("[data-sub]");if(sb){floorSub=sb.dataset.sub==="notes"?"handoff":sb.dataset.sub;show("floor");return}
  const t=e.target.closest("button,input")||e.target,F=window.Floor,v=id=>($("#"+id)||{}).value?.trim();
  try{const a=t.dataset.act;
- if(a==="key"){ShiftData.Key.set(v("k"));meta=null;for(const k in VIEW)delete VIEW[k];show("home");return}
+ if(a==="key"){if(!v("k")){$("#k").focus();return}ShiftData.Key.set(v("k"));meta=null;KEYJUST=true;for(const k in VIEW)delete VIEW[k];await show("settings",{fresh:1});KEYJUST=false;return}
  if(a==="clearkey"){ShiftData.Key.set("");meta=null;for(const k in VIEW)delete VIEW[k];show("settings");return}
  if(a==="pos"&&v("pp")){const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:v("pp"),name:first(v("pn"))})}
  else if(t.dataset.place){openSheet(t.dataset.place,t.dataset.pos);return}
@@ -306,6 +322,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  else return;show("floor")}catch(err){alert("Could not save: "+err.message)}});
 app.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".addbar input, #k")){const b=e.target.parentElement.querySelector("[data-act]");if(b)b.click()}});
 $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
+window.addEventListener("shifthub:data",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools"].includes(cur))show(cur)});
 setSrc(false);show("home");
 if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.controller;
  // New version took over: reload once. Guard: only if a worker controlled the page at load, and not twice within 10s.

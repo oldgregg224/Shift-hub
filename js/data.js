@@ -1,5 +1,8 @@
 // Tabs: Brief, Labor, Events, Speed, SMG, Roster, Comments, Meta (sample file = data/sample/<tab lowercase>.json).
 // Reads each tab from the Apps Script web app (GET ?key=..&tab=..), else bundled sample JSON.
+// v12: live GETs run one at a time (Apps Script throttles parallel calls from one user), failures are per tab
+// (one slow tab no longer flips every tab to sample), and the last good live rows per tab are kept in memory +
+// localStorage and shown (marked Cached) until a retry with backoff succeeds.
 (function(){
 // Key persistence: localStorage (primary) + cookie backup (1 yr). Never cleared automatically; only "Clear key" removes it.
 const KN="shifthub_key";
@@ -8,37 +11,56 @@ function ls(){try{return localStorage.getItem(KN)||""}catch(e){return ""}}
 const Key={get:()=>{let k=ls();if(!k){k=ck();if(k)try{localStorage.setItem(KN,k)}catch(e){}}return k.trim()},
  set:k=>{k=String(k||"").trim();try{k?localStorage.setItem(KN,k):localStorage.removeItem(KN)}catch(e){}
   document.cookie=KN+"="+encodeURIComponent(k)+";path=/;max-age="+(k?31536000:0)+";SameSite=Strict;Secure";
-  st.bad="";st.ok=false;st.netAt=0;reset()}};
+  st.bad="";st.ok=false;st.netAt=0;reset(true)}};
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
-// In-memory results + in-flight de-dupe: screens render instantly from memo, and two screens asking for the same tab share one request.
-const memo={},inflight={};const LIVE_TTL=30000;
-function reset(){for(const k in memo)delete memo[k]}
 const url=()=>(window.SHIFTHUB_CONFIG||{}).appsScriptUrl||"";
-// st.bad: "" | "key" (server said bad key) | "net" (could not reach it). Reset when the key changes.
-const st={bad:"",ok:false,netAt:0};const NET_RETRY=20000;
+// st.bad: "" | "key" (server said bad key, sticks until key changes) | "net" (latest live call failed). st.ok: a live call has succeeded.
+const st={bad:"",ok:false,netAt:0};
 const canTry=()=>!!(url()&&Key.get());
 const live=()=>canTry()&&st.bad!=="key"&&st.ok;
-const TIMEOUT=25000,SAMPLE_TIMEOUT=20000;
+const TIMEOUT=30000,SAMPLE_TIMEOUT=20000,FRESH_TTL=60000,BACKOFF=[5000,15000,45000,120000];
 async function fetchT(u,opt,ms=TIMEOUT){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);
  try{return await fetch(u,Object.assign({signal:c.signal},opt))}catch(e){throw new Error(e.name==="AbortError"?"timed out":"offline or unreachable")}finally{clearTimeout(t)}}
-async function api(params,body){const u=new URL(url());
+// One live GET at a time: parallel calls queue up behind each other instead of racing the timeout.
+let chain=Promise.resolve();
+function serial(fn){const p=chain.then(fn,fn);chain=p.catch(()=>{});return p}
+async function api_(params,body){const u=new URL(url());
  Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));u.searchParams.set("key",Key.get());
  // GET follows Apps Script's redirect; POST uses text/plain to avoid a CORS preflight.
  const r=await fetchT(u,body?{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body),redirect:"follow"}:{redirect:"follow",cache:"no-store"});
  let j;try{j=await r.json()}catch(e){throw new Error("bad response")}if(j.error)throw new Error(j.error);return j}
-function load(tab,o={}){const m=memo[tab];
- if(!o.fresh&&m&&(Date.now()-m.t<(m.live?LIVE_TTL:(canTry()&&st.bad!=="key"?NET_RETRY:1e12))))return Promise.resolve(m.v);
- if(inflight[tab])return inflight[tab];
- const p=load_(tab).then(v=>{memo[tab]={v,t:Date.now(),live:v.live};return v}).finally(()=>{delete inflight[tab]});
- return inflight[tab]=p}
-const cached=tab=>!!memo[tab];
-async function load_(tab){
- // Only a server "bad key" sticks (until the key is changed). Network/timeout errors retry after NET_RETRY ms and never touch the key.
- if(canTry()&&st.bad!=="key"&&!(st.bad==="net"&&Date.now()-st.netAt<NET_RETRY)){
-  try{const rows=(await api({tab})).rows;st.ok=true;st.bad="";return{rows,live:true}}
-  catch(e){console.warn("live load failed",e.message);if(/bad key/i.test(e.message)){st.bad="key";st.ok=false}else{st.bad="net";st.netAt=Date.now()}}}
- if(tab==="Meta")return{rows:[],live:false};
+const api=(params,body)=>body?api_(params,body):serial(()=>api_(params));
+// Last good live rows per tab: memory + localStorage (dashboard data only; no key, no guest personal info beyond what the Sheet shows).
+const LK=t=>"shifthub_live_"+t,good={},fail={},inflight={},timers={};
+function getGood(t){if(good[t])return good[t];try{const o=JSON.parse(localStorage.getItem(LK(t))||"null");if(o&&Array.isArray(o.rows))return good[t]=o}catch(e){}return null}
+function setGood(t,rows){const o={rows,t:Date.now()};good[t]=o;try{localStorage.setItem(LK(t),JSON.stringify(o))}catch(e){}return o}
+function reset(all){for(const k in fail)delete fail[k];for(const k in timers){clearTimeout(timers[k]);delete timers[k]}
+ if(all){for(const k in good)delete good[k];try{Object.keys(localStorage).filter(k=>k.startsWith("shifthub_live_")).forEach(k=>localStorage.removeItem(k))}catch(e){}}
+ else for(const k in good)good[k].t=0}
+const emit=t=>{try{window.dispatchEvent(new CustomEvent("shifthub:data",{detail:{tab:t}}))}catch(e){}};
+// Fetch one tab live. On failure: remember it for this tab only and retry in the background with backoff.
+function refresh(t){if(inflight[t])return inflight[t];
+ const p=api({tab:t}).then(j=>{const g=setGood(t,j.rows||[]);delete fail[t];clearTimeout(timers[t]);delete timers[t];st.ok=true;if(st.bad==="net")st.bad="";return g},
+  e=>{console.warn("live load failed",t,e.message);
+   if(/bad key/i.test(e.message)){st.bad="key";st.ok=false;throw e}
+   st.bad="net";st.netAt=Date.now();const f=fail[t]=fail[t]||{n:0};f.n++;f.at=Date.now();f.msg=e.message;
+   clearTimeout(timers[t]);timers[t]=setTimeout(()=>{delete timers[t];if(canTry()&&st.bad!=="key")refresh(t).then(()=>emit(t),()=>{})},BACKOFF[Math.min(f.n-1,BACKOFF.length-1)]);
+   throw e}).finally(()=>{delete inflight[t]});
+ return inflight[t]=p}
+async function sample(t){if(t==="Meta")return{rows:[],live:false,src:"sample"};
  // Sample files are bundled in the service worker cache (cache-first), so this normally never touches the network.
- const r=await fetchT("data/sample/"+tab.toLowerCase()+".json",{},SAMPLE_TIMEOUT);if(!r.ok)throw new Error("couldn't load "+tab+" data");return{rows:await r.json(),live:false}}
-window.ShiftData={load,reset,cached,api,live,Key,status:st,hasUrl:()=>!!url()};
+ const r=await fetchT("data/sample/"+t.toLowerCase()+".json",{},SAMPLE_TIMEOUT);if(!r.ok)throw new Error("couldn't load "+t+" data");return{rows:await r.json(),live:false,src:"sample"}}
+// load(tab): fresh live rows -> src "live"; last good live rows (cache) -> src "cached" (refreshes in background); else sample.
+async function load(t,o={}){
+ if(!canTry()||st.bad==="key")return sample(t);
+ const g=getGood(t),age=g?Date.now()-g.t:1e15;
+ if(g&&!o.fresh&&age<FRESH_TTL&&!fail[t])return{rows:g.rows,live:true,src:"live",at:g.t};
+ if(g&&!o.fresh){ // show saved data at once; refresh quietly and tell the app when new rows land
+  if(!fail[t]||!timers[t])refresh(t).then(()=>emit(t),()=>emit(t));
+  return{rows:g.rows,live:true,src:fail[t]?"cached":(g.t&&age<FRESH_TTL*5?"live":"cached"),at:g.t}}
+ try{const n=await refresh(t);return{rows:n.rows,live:true,src:"live",at:n.t}}
+ catch(e){const g2=getGood(t);if(g2&&st.bad!=="key")return{rows:g2.rows,live:true,src:"cached",at:g2.t};return sample(t)}}
+const cached=t=>!!getGood(t);
+const failed=t=>fail[t]||null;
+window.ShiftData={load,reset,cached,failed,api,live,Key,status:st,hasUrl:()=>!!url()};
 })();

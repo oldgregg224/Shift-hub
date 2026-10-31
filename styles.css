@@ -106,3 +106,11 @@ button.alert{width:100%;text-align:left;font:inherit;border:0;border-left:4px so
 .err{margin:0;padding:10px 12px;border-radius:12px;background:var(--bad-bg);color:#B91C1C;font-size:14px;line-height:20px}
 .sheet-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:50;display:flex;align-items:flex-end}
 .sheet{background:var(--surface,#fff);width:100%;max-height:85vh;overflow:auto;border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+/* v12 */
+.upd.stale{color:#B45309;font-weight:600}
+.ok{margin:0;display:flex;align-items:center;gap:6px;font:600 14px/20px var(--font);color:#15803D}
+.ok svg{width:18px;height:18px}
+.ver{text-align:center;font:600 14px/20px var(--font);color:var(--ink-2);padding:8px 0}
+#tabs button{font-size:12.5px;line-height:16px}
+#tabs button svg{width:26px;height:26px}
+:root{--tabbar:68px}
