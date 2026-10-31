@@ -1,4 +1,4 @@
-const C="shifthub-v13",SAMPLES=["brief","labor","events","speed","smg","roster","comments"].map(t=>"data/sample/"+t+".json"),
+const C="shifthub-v14",SAMPLES=["brief","labor","events","speed","smg","roster","comments"].map(t=>"data/sample/"+t+".json"),
 A=["./","index.html","styles.css","config.js","js/icons.js","icon.svg","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","icons/apple-touch-icon.png","js/data.js","js/floor.js","js/app.js","manifest.json",...SAMPLES];
 // Install fresh copies (bypass HTTP cache) and take over right away.
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(A.map(u=>new Request(u,{cache:"reload"})))))});
@@ -11,7 +11,7 @@ function netFirst(q,ms){const net=fetch(q.url,{cache:"no-cache",credentials:"sam
   const t=setTimeout(()=>fromCache().then(fin),ms);
   net.then(r=>{clearTimeout(t);fin(r)},()=>{clearTimeout(t);fromCache().then(m=>fin(m||Response.error()))});
   net.catch(()=>{});setTimeout(()=>net.then(fin,()=>fin(Response.error())),ms+1)})}
-self.addEventListener("fetch",e=>{const q=e.request,u=new URL(q.url);if(q.method!=="GET"||u.origin!==location.origin)return;
+self.addEventListener("fetch",e=>{const q=e.request,u=new URL(q.url);if(q.method!=="GET"||u.origin!==location.origin||u.pathname.endsWith("/version.json"))return;
  // Bundled sample data: cache-first (ignore ?query), refresh in the background.
  if(u.pathname.includes("/data/sample/")){e.respondWith(caches.match(q,{ignoreSearch:true}).then(m=>{const net=fetch(q.url,{cache:"no-cache"}).then(r=>put(q,r));if(m){net.catch(()=>{});return m}return net}));return}
  // App shell: network-first (no-cache revalidation), cache after 4s or when offline.

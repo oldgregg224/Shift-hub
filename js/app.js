@@ -75,6 +75,41 @@ function pickNow(H,has){const h=new Date().getHours(),w=H.filter(o=>has(o.x));if
  if(b)return{o:b,lbl:"Latest · "+hh(b.h)};const l=w[w.length-1];return{o:l,lbl:"Latest · "+hh(l.h)}}
 const chipIf=(st,txt)=>st&&st!=="neutral"&&txt&&!/NaN|undefined/.test(txt)?chip(st,txt):"";
 
+
+// Real Labor tab (Store Ops sync): DAY rows (hour "ALL": cap_hours, sales = projection, target_pct, call, notes)
+// and BLOCK rows (hour "HH:MM-HH:MM" or "HH:MM": call, position_to_cut_first, prep_level_notes). labor_pct is often blank.
+function rngOf(v){const m=/^\s*(\d{1,2}):?(\d{2})?\s*(?:-|–|to)\s*(\d{1,2}):?(\d{2})?\s*$/.exec(String(v||""));if(m)return{a:+m[1]*60+(+m[2]||0),b:+m[3]*60+(+m[4]||0)};
+ const h=hourOf(v);if(h==null)return null;const mm=/:(\d{2})/.exec(String(v));const a=h*60+(mm?+mm[1]:0);return{a,b:a+60}}
+const tm=m=>{m=((m%1440)+1440)%1440;const h=Math.floor(m/60),mi=m%60;return (h%12||12)+(mi?":"+String(mi).padStart(2,"0"):"")+(h>=12?"p":"a")};
+function laborPlan(r,LP,TP,CH,SL){r=(r||[]).filter(x=>!/^(header|example)$/i.test(String(x.row_type||"")));
+ const dOf=x=>String(fld(x,["date","business_date","day"])||"").slice(0,10),T=x=>String(x.row_type||"").toUpperCase();
+ const days=r.filter(x=>T(x)==="DAY"||isTot(x)),blocks=r.filter(x=>T(x)!=="DAY"&&!isTot(x)&&rngOf(fld(x,["hour","time","block"])));
+ if(!days.length&&!blocks.length)return "";
+ const today=ymd(new Date()),dates=[...new Set(days.map(dOf))].sort();const dd=dates.includes(today)?today:dates.filter(d=>d<=today).pop()||dates.pop();
+ const day=days.filter(x=>dOf(x)===dd).pop();
+ const callSt=c=>{c=String(c||"").toUpperCase();return c.includes("EARLY")||c.includes("CUT")?"bad":c.includes("HOLD")?"warn":c?"good":"neutral"};
+ const callChip=c=>c&&!/^[—–-]$/.test(c)?chip(callSt(c),c):"";
+ const txt=v=>{v=String(v??"").trim();return v&&!/^[—–-]$|^â/.test(v)?v:""};
+ const nowM=Date.now();const abs=x=>{const g=rngOf(fld(x,["hour","time","block"])),d=new Date(dOf(x)+"T00:00:00");if(isNaN(d))return null;
+  const st=d.getTime()+g.a*6e4,en=d.getTime()+(g.b<=g.a?g.b+1440:g.b)*6e4;return{st,en,g}};
+ const B=blocks.map(x=>({x,t:abs(x)})).filter(o=>o.t).sort((a,b)=>a.t.st-b.t.st);
+ const cur=B.filter(o=>o.t.st<=nowM&&nowM<o.t.en).pop(),nxt=B.find(o=>o.t.st>nowM),last=B.filter(o=>o.t.en<=nowM).pop();
+ const lab=(o)=>{const g=o.t.g;return o.x.hour&&/[-–]/.test(o.x.hour)?tm(g.a)+"–"+tm(g.b):tm(g.a)};
+ const dayLbl=d=>d===today?"Today":new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+ let h="";
+ if(day){const l=num(day,LP),t=num(day,TP),c=num(day,CH),sa=num(day,SL),call=txt(fld(day,["call","labor_call"]));const s=isNaN(l)||isNaN(t)?"neutral":status(l,t,"labor");
+  h+=`<div class="card"><div class="lbl">${dd===today?"Today":"Latest · "+esc(dayLbl(dd))}${chipIf(s,(isNaN(l-t)?"":sgn(l-t,1)+" · ")+(WORD[s]||""))}</div>
+  <div class="hero">${isNaN(l)?(isNaN(c)?"—":esc(+c.toFixed(1))+"<small style='font-size:.45em'> cap hrs</small>"):pct(l)}</div>
+  <div class="meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${[isNaN(t)?"":"target "+pct(t),!isNaN(l)&&!isNaN(c)?"cap "+esc(+c.toFixed(1))+" hrs":"",isNaN(sa)?"":"proj "+money(sa)].filter(Boolean).join(" · ")} ${callChip(call)}</div>
+  ${[["Cut first",fld(day,["position_to_cut_first","cut_first"])],["Notes",fld(day,["prep_level_notes","prep_notes"])],["Hold times",fld(day,["hold_time_reminders","hold_notes"])]].filter(([,v])=>txt(v)).map(([k,v])=>`<p class="meta" style="-webkit-line-clamp:6"><b>${k}:</b> ${esc(txt(v))}</p>`).join("")}</div>`}
+ const F=cur?["Now",cur]:nxt?["Next",nxt]:last?["Latest",last]:null;
+ if(F){const x=F[1].x;h+=`<div class="card${F[0]==="Now"?" now":""}"><div class="lbl">${F[0]} · ${esc(lab(F[1]))}${F[1].t&&dOf(x)!==today?" "+esc(dayLbl(dOf(x))):""}${callChip(txt(x.call))}</div>
+  ${txt(fld(x,["position_to_cut_first","cut_first"]))?`<div class="meta"><b>Cut first:</b> ${esc(txt(fld(x,["position_to_cut_first","cut_first"])))}</div>`:""}
+  ${txt(fld(x,["prep_level_notes","prep_notes"]))?`<p class="meta" style="-webkit-line-clamp:6">${esc(txt(fld(x,["prep_level_notes","prep_notes"])))}</p>`:""}</div>`}
+ const up=B.filter(o=>o.t.en>nowM-36e5*2);
+ if(up.length)h+=`<div class="sec">Labor calls</div><div class="list">${up.map(o=>{const x=o.x,cut=txt(fld(x,["position_to_cut_first","cut_first"])),nt=txt(fld(x,["prep_level_notes","prep_notes"]));
+  return `<details><summary class="row"><span class="t">${esc(lab(o))}</span><span class="v txt">${esc(dOf(x)===today?"Today":dayLbl(dOf(x)))}<small>${esc(cut||"—")}</small></span>${callChip(txt(x.call))}${I("chevron-down","cv")}</summary>${nt?`<p class="meta" style="padding:0 12px 12px;-webkit-line-clamp:8">${esc(nt)}</p>`:""}</details>`}).join("")}</div>`;
+ return h||empty("No labor plan yet")}
 async function whoHome(){try{const {rows}=await roster(),now=shiftNow();const sr=rows.filter(x=>x.date===now.date&&x.shift===now.shift);if(!sr.length)return "";
  const m=sr.filter(x=>String(x.role).toLowerCase()==="manager").map(x=>first(x.first_name)).join(", ")||"—",c=sr.length-sr.filter(x=>String(x.role).toLowerCase()==="manager").length;
  return `<button class="card tool" type="button" data-go="whoson">${I("users")}<span><b>Who's on · ${esc(m)}</b><span class="meta">${c} crew this shift</span></span>${I("chevron-right","cv")}</button>`}catch(e){return ""}}
@@ -98,6 +133,7 @@ async labor(){const r=await get("Labor");
  const LP=["labor_pct","labor_percent","labor_pct_actual","actual_labor_pct","actual_pct","crew_labor_pct","labor"],TP=["target_pct","labor_target_pct","target","goal_pct","labor_goal_pct","projected_labor_pct","labor_projection_pct"],
  AH=["actual_hours","labor_hours","worked_hours","actual_hrs","hours_worked","hours"],CH=["cap_hours","scheduled_hours","planned_hours","budget_hours","cap_hrs","sched_hours","projected_hours"],SL=["sales","net_sales","sales_actual","actual_sales"];
  const has=x=>!isNaN(num(x,LP))||!isNaN(num(x,AH));const {hours,total}=hourly(r,has);
+ if(!hours.some(o=>has(o.x))){const pv=laborPlan(r,LP,TP,CH,SL);if(pv)return keyAlert()+pv}
  if(!hours.some(o=>has(o.x))&&!total)return keyAlert()+empty("No labor data yet");
  const callSt=c=>{c=String(c||"").toUpperCase();return c.includes("EARLY")?"bad":c.includes("HOLD")?"warn":"good"};
  const tgt=x=>{const t=num(x,TP);return isNaN(t)?NaN:t};
@@ -208,7 +244,11 @@ async function roster(){const r=await ShiftData.load("Roster");let rows=(r.rows|
  return{rows,live:r.live,r}}
 const first=s=>String(s||"").trim().split(/\s+/)[0];
 let whoDay=0;
-S.whoson=async()=>{const {rows,live,r}=await roster();CUR.src=r.src;await setUpd("Roster",rows,live,r);setSrc(live,r.src);
+S.whoson=async()=>{const {rows,live,r}=await roster();
+ if(r.src==="unsupported"){CUR.src="live";$("#upd").textContent="";setSrc(true,"live");
+  return `<div class="card stack" role="status"><div class="lbl">Who's on needs the Apps Script update${chip("warn","Not shared yet")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script is an older version that doesn't serve the Roster tab yet. Ask your GM to redeploy the latest Shift Hub Apps Script. Everything else is live.</div></div>`}
+ CUR.src=r.src;await setUpd("Roster",rows,live,r);setSrc(live,r.src);
+ if(live&&!rows.filter(x=>String(x.row_type||"").toUpperCase()!=="EXAMPLE").length)return `<div class="card stack" role="status"><div class="lbl">No roster in the Sheet yet${chip("neutral","Roster tab")}</div><div class="meta" style="-webkit-line-clamp:6">The Sheet has no Roster rows. Add a Roster tab (row_type, date, shift, role, first_name, position, start, end) or let the schedule sync fill it.</div></div>`;
  const now=shiftNow(),d=new Date(now.op);d.setDate(d.getDate()+whoDay);const day=ymd(d);
  const seg=`<div class="seg" role="tablist">${["Today","Tomorrow"].map((l,i)=>`<button type="button" role="tab" data-who="${i}" class="${i===whoDay?"on":""}" aria-selected="${i===whoDay}">${l}</button>`).join("")}</div>`;
  const dayRows=rows.filter(x=>x.date===day);
@@ -224,7 +264,7 @@ const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],
 const back=`<button class="btn" data-go="tools" style="align-self:flex-start">${I("chevron-left")}Tools</button>`;
 const OLDK=k=>window.FloorCompat&&FloorCompat.needsUpdate(k)&&ShiftData.live();
 const oldCard=k=>OLDK(k)?`<div class="card stack" role="status"><div class="lbl">Tools need the Apps Script update${chip("warn","This phone only")}</div><div class="meta" style="-webkit-line-clamp:4">The shared Sheet script is an older version, so entries here are saved on this phone only for now. Ask your GM to redeploy the latest Shift Hub Apps Script.</div></div>`:"";
-const store=k=>OLDK(k)?"":`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
+const store=k=>OLDK(k)?"":window.FloorCompat&&FloorCompat.slow(k)&&ShiftData.live()?`<p class="upd" style="padding:0;text-align:center">Couldn't reach the shared Sheet, showing this phone's entries</p>`:`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
 async function toolSync(){try{const r=await ShiftData.load("Brief");await setUpd("Brief",r.rows,r.live,r);setSrc(r.live,r.src)}catch(e){$("#upd").textContent="";setSrc(ShiftData.live())}}
 const nowT=()=>{const d=new Date();return{date:ymd(d),time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}};
 const pick=(g,opts,cur)=>`<div class="seg" data-group="${g}">${opts.map(o=>`<button type="button" data-pick="${esc(o)}" class="${o===cur?"on":""}">${esc(o[0].toUpperCase()+o.slice(1))}</button>`).join("")}</div>`;
@@ -279,7 +319,7 @@ S.crewnotes=async()=>{await toolSync();const rows=(await Floor.list("crewnotes")
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v13";
+const APPVER="v14";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -324,7 +364,7 @@ async function show(s,o={}){const my=++seq,moved=shown!==s;cur=s;shown=s;$("#tit
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
  const had=!o.fresh&&VIEW[s];if(had)app.innerHTML=VIEW[s];else if(moved||o.fresh)app.innerHTML=empty("Loading…");
  if(moved)scrollTop_(s);
- try{const h=await S[s]();if(my!==seq)return;if(h!==VIEW[s]||!had){app.innerHTML=h;VIEW[s]=h;if(moved&&!had)scrollTop_(s)}}catch(e){if(my!==seq)return;if(had)return;delete VIEW[s];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
+ try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(h!==VIEW[s]||!had){app.innerHTML=h;VIEW[s]=h;if(moved&&!had)scrollTop_(s)}}catch(e){if(my!==seq)return;if(had)return;delete VIEW[s];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
 }
 function scrollTop_(s){const nw=document.querySelector(".card.now");if(nw&&s==="whoson")nw.scrollIntoView({block:"center"});else window.scrollTo(0,0)}
@@ -367,5 +407,14 @@ if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.contr
  // New version took over: reload once. Guard: only if a worker controlled the page at load, and not twice within 10s.
  sw.addEventListener("controllerchange",()=>{if(!had)return;const t=+sessionStorage.getItem("shifthub_swreload")||0;if(Date.now()-t<10000)return;
   sessionStorage.setItem("shifthub_swreload",Date.now());location.reload()});
- sw.register("sw.js",{updateViaCache:"none"}).then(r=>{r.update();document.addEventListener("visibilitychange",()=>{if(!document.hidden)r.update()})}).catch(()=>{})}
+ sw.register("sw.js",{updateViaCache:"none"}).then(r=>{r.update();verCheck(r);document.addEventListener("visibilitychange",()=>{if(!document.hidden)r.update()})}).catch(()=>{})}
 })();
+
+// v14: force update. If the deployed version differs from this page's APPVER, update the service worker,
+// drop old caches and reload once (guarded per version so it can never loop).
+async function verCheck(reg){try{const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;const v=(await r.json()).v;
+ if(!v||v===APPVER)return;const g="shifthub_reloaded_"+v;if(sessionStorage.getItem(g))return;sessionStorage.setItem(g,"1");
+ try{await reg.update()}catch(e){}try{const ks=await caches.keys();await Promise.all(ks.filter(k=>k.startsWith("shifthub-")).map(k=>caches.delete(k)))}catch(e){}
+ location.reload()}catch(e){}}
+if(navigator.serviceWorker){let had=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener("controllerchange",()=>{if(!had){had=true;return}
+ const g="shifthub_ctl_"+APPVER;if(sessionStorage.getItem(g))return;sessionStorage.setItem(g,"1");location.reload()})}

@@ -25,11 +25,15 @@ function wrap(A){return {name:A.name,add:(k,r)=>k==="positions"?A.place(r):A.add
 // Older deployed Code.gs only knows positions/breaks/checklist/fixes/handoff and answers "bad kind" for the Tools kinds.
 // Then those kinds use this phone's storage and the app shows "Tools need the Apps Script update".
 const OLD=new Set();const isBadKind=e=>/bad kind/i.test(e&&e.message||"");
-function guard(A){const g=(k,fn,loc)=>OLD.has(k)?loc():fn().catch(e=>{if(isBadKind(e)){OLD.add(k);return loc()}throw e});
- return {name:A.name,list:k=>g(k,()=>A.list(k),()=>LocalAdapter.list(k)),add:(k,r)=>g(k,()=>A.add(k,r),()=>LocalAdapter.add(k,r)),
+const TOOLK=new Set(["inventory","waste","equipment","crewnotes"]),SLOW=new Set();
+// Tools reads never hang the screen: after 15s (or any non-key error) they fall back to this phone's copy.
+const within=(p,ms)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(new Error("timed out")),ms))]);
+function guard(A){const g=(k,fn,loc,read)=>OLD.has(k)?loc():(read&&TOOLK.has(k)?within(fn(),15000):fn()).then(v=>{SLOW.delete(k);return v},e=>{if(isBadKind(e)){OLD.add(k);return loc()}
+  if(read&&TOOLK.has(k)&&!/bad key/i.test(e.message||"")){SLOW.add(k);return loc()}throw e});
+ return {name:A.name,list:k=>g(k,()=>A.list(k),()=>LocalAdapter.list(k),1),add:(k,r)=>g(k,()=>A.add(k,r),()=>LocalAdapter.add(k,r)),
   update:(k,i,p)=>g(k,()=>A.update(k,i,p),()=>LocalAdapter.update(k,i,p)),place:r=>A.place(r)}}
 const WL=wrap(LocalAdapter),WA=wrap(guard(AppsScriptAdapter));
-window.FloorCompat={needsUpdate:k=>OLD.has(k)};
+window.FloorCompat={needsUpdate:k=>OLD.has(k),slow:k=>SLOW.has(k)};
 Object.defineProperty(window,"Floor",{get:()=>ShiftData.live()?WA:WL});
 window.FloorPos={key:posKey,id:posId,dedupe};
 })();
