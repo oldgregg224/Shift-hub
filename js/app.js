@@ -296,11 +296,11 @@ const hrs=v=>{const x=parseFloat(String(v??"").replace(/[^\d.\-]/g,""));return i
 const nkey=s=>first(s).toLowerCase();
 // Availability note parsing (cautions only; never excludes).
 const DAYS=["sun","mon","tue","wed","thu","fri","sat"],DFULL=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-const DRE="(sun|mon|tue|wed|thu|fri|sat)[a-z]*\\.?";
+const DRE="(?<![a-z])(sun|mon|tue|wed|thu|fri|sat)(?:days|day|nesdays|nesday|sdays|sday|rsdays|rsday|urdays|urday|rs|r|s|\\.)?(?![a-z])";
 const ntime=x=>{x=String(x).trim().toLowerCase();if(/^noon|^midday/.test(x))return 720;if(/^midnight/.test(x))return 1440;const m=x.match(/^(\d{1,2})(?::(\d{2}))?\s*(a|p)?/);if(!m)return NaN;let h=+m[1];if(m[3]){if(h===12)h=0;if(m[3]==="p")h+=12}else if(h>=1&&h<=6)h+=12;return h*60+(+(m[2]||0))};
 const fmtM=m=>{m%=1440;const h=Math.floor(m/60),mi=m%60;return (h%12||12)+(mi?":"+String(mi).padStart(2,"0"):"")+(h<12?" AM":" PM")};
 function availWarn(notes,iv){const n=String(notes||"").toLowerCase();if(!n.trim())return[];const out=[];const st=iv[0]%1440,en=st+(iv[1]-iv[0]),wd=(Math.floor(iv[0]/1440)+3)%7; /* dayN() rounds noon-UTC up, so epoch day index is +1 */
- const T="(noon|midday|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:[ap]\\.?m?\\.?)?)";let m;
+ const T="(noon|midday|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:[ap]\\.?m\\.?|[ap](?![a-z]))?)(?![\\d/:.-]|\\s*(?:hours?|hrs?|h\\b|days?|shifts?|weeks?|min))";let m;
  if((m=n.match(new RegExp("(?:after|from|not before|starting(?: at)?)\\s+"+T)))){const t=ntime(m[1]);if(!isNaN(t)&&st<t)out.push("Note: after "+fmtM(t))}
  if((m=n.match(new RegExp("(?:before|until|till|by|not after)\\s+"+T)))){const t=ntime(m[1]);if(!isNaN(t)&&en>t)out.push("Note: until "+fmtM(t))}
  if(/no\s+(early\s+)?mornings?|not\s+mornings?|no\s+opens?/.test(n)&&st<720)out.push("Note: no mornings");
@@ -319,8 +319,8 @@ function availWarn(notes,iv){const n=String(notes||"").toLowerCase();if(!n.trim(
  return out}
 window.availWarn=availWarn;
 // Rest check vs other Roster shifts: back-to-back (gap 0) or under 8 h rest before/after.
-function restWarn(sh,iv){const out=[];let a=iv[0],b=iv[1],chain=false;const ss=sh.slice().sort((x,y)=>x.sp[0]-y.sp[0]);let grew=true;
- while(grew){grew=false;ss.forEach(r=>{if(r.sp[1]===a){a=r.sp[0];chain=grew=true}else if(r.sp[0]===b){b=r.sp[1];chain=grew=true}})}
+function restWarn(sh,iv){const out=[];let a=iv[0],b=iv[1],chain=false;const ss=sh.slice().sort((x,y)=>x.sp[0]-y.sp[0]);let grew=true,gN=0;
+ while(grew&&gN++<50){grew=false;ss.forEach(r=>{if(r.sp[1]===a){a=r.sp[0];chain=grew=true}else if(r.sp[0]===b){b=r.sp[1];chain=grew=true}})}
  if(chain)out.push("back-to-back, "+h1((b-a)/60)+" h day");
  let gb=Infinity,ga=Infinity;ss.forEach(r=>{if(r.sp[1]<a)gb=Math.min(gb,a-r.sp[1]);if(r.sp[0]>b)ga=Math.min(ga,r.sp[0]-b)});const g=Math.min(gb,ga);
  if(g<480)out.push("only "+h1(g/60)+" h rest "+(gb<=ga?"before":"after"));return out}
@@ -386,7 +386,7 @@ S.cover=async()=>{const R=within(roster(),2500,()=>({rows:[],live:false,r:{src:"
  <label class="meta" style="flex:1;margin:0;display:block;overflow:visible">Min level<select id="cvmin" aria-label="Minimum station level" ${SEL}>${[1,2,3,4,5].map(n=>o_(n,n===1?"Any":n+"+",String(n)===String(COV.min))).join("")}</select></label></div>
  <button class="btn primary block" type="button" data-act="cover">Find cover</button></div>`;
  if(!COV.ran)return head+form+(crew.length?"":`<p class="upd" style="padding:0;text-align:center">No Coverage rows in the Sheet yet</p>`);
- let t;if(sel!=="manual"&&rows[+sel]){const x=rows[+sel];t={role:x.position,date:x.date,start:x.start,end:x.end,out:x.first_name}}else t={role:COV.role,date:COV.date||d0,start:COV.start||defS,end:COV.end||defE};
+ let t;if(sel!=="manual"&&rows[+sel]){const x=rows[+sel];t={role:x.position,date:x.date,start:x.start,end:x.end,out:x.first_name}}else {const nz=x=>{const m=tmin(x);return isNaN(m)?x:hhmm(m)};t={role:COV.role,date:COV.date||d0,start:nz(COV.start||defS),end:nz(COV.end||defE)}}
  t.station=COV.station;t.min=COV.min;
  if(!String(t.role).trim())return head+form+`<p class="meta">Choose a role.</p>`;
  const res=covRank(rows,crew,t);if(res.error)return head+form+`<p class="meta">${esc(res.error)}.</p>`;
@@ -480,7 +480,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v29";
+const APPVER="v30";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
