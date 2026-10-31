@@ -30,7 +30,9 @@ async function setUpd(tab,rows,live){if(live===false){$("#upd").textContent="Sam
  const m=meta.find(x=>x.tab===tab);const v=(m&&m.last_updated)||(rows[0]&&rows[0].last_updated)||"";
  const d=new Date(v);$("#upd").textContent=v?"Updated "+(isNaN(d)?v:d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})):""}
 const keyMsg=()=>({key:"Key didn't work, using sample data",net:"Couldn't reach live data, using sample data"})[ShiftData.status.bad]||"";
-function setSrc(live){const p=$("#src");p.classList.toggle("live",live);const bad=ShiftData.status.bad;p.classList.toggle("bad",!!bad);
+function keyBanner(){let b=$("#keybanner");const m=keyMsg();if(!b){b=document.createElement("p");b.id="keybanner";b.className="err";b.setAttribute("role","alert");b.style.margin="0 16px 8px";$("#upd").after(b)}
+ b.hidden=!m;b.textContent=m?(ShiftData.status.bad==="key"?"Shared key didn't work. Open Settings and re-enter it.":m+". Retrying automatically."):""}
+function setSrc(live){keyBanner();const p=$("#src");p.classList.toggle("live",live);const bad=ShiftData.status.bad;p.classList.toggle("bad",!!bad);
  const has=!!ShiftData.Key.get();p.dataset.label=live?"Live":bad==="key"?"Key didn't work":bad?"Offline · sample":(has?"Sample · check key":"Sample · add key");
  p.setAttribute("aria-label",(live?"Live data":keyMsg()||"Sample data")+". Open settings")}
 const keyAlert=()=>keyMsg()?`<button class="alert" type="button" data-go="settings">${I("siren")}<div><b>${esc(keyMsg())}</b><span>Tap to check the key in Settings</span></div></button>`:"";
@@ -150,7 +152,10 @@ const SHIFTS=[["6a-2p","6 AM – 2 PM"],["2p-10p","2 PM – 10 PM"],["10p-6a","1
 const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 function shiftNow(){const d=new Date(),h=d.getHours();const op=new Date(d);if(h<6)op.setDate(op.getDate()-1);
  return{date:ymd(op),shift:h>=6&&h<14?"6a-2p":h>=14&&h<22?"2p-10p":"10p-6a",op}}
-async function roster(){const r=await ShiftData.load("Roster");let rows=r.rows||[];
+const isoD=v=>{v=String(v||"").trim();let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+ m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);if(m)return(m[3].length==2?"20"+m[3]:m[3])+"-"+m[1].padStart(2,"0")+"-"+m[2].padStart(2,"0");const d=new Date(v);return isNaN(d)?v:ymd(d)};
+const normShift=v=>{const t=String(v||"").toLowerCase().replace(/\s|:00|m\b/g,"").replace(/[–—to]+/g,"-");return t.startsWith("6a")?"6a-2p":t.startsWith("2p")?"2p-10p":t.startsWith("10p")?"10p-6a":String(v||"").trim()};
+async function roster(){const r=await ShiftData.load("Roster");let rows=(r.rows||[]).filter(x=>String(x.row_type||"").toUpperCase()!=="HEADER").map(x=>Object.assign({},x,{date:isoD(x.date),shift:normShift(x.shift),role:String(x.role||"").trim()}));
  if(!r.live&&rows.length){// sample: move EXAMPLE dates so the first one is "today"
   const base=rows.map(x=>x.date).sort()[0],op=shiftNow().op;const b=new Date(base+"T12:00:00");
   rows=rows.map(x=>{const d=new Date(x.date+"T12:00:00");const o=new Date(op);o.setDate(o.getDate()+Math.round((d-b)/864e5));return Object.assign({},x,{date:ymd(o)})})}
@@ -225,7 +230,7 @@ S.crewnotes=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const ro
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store()};
 
-const APPVER="v10";
+const APPVER="v11";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();setSrc(ShiftData.live());
  await ShiftData.load("Brief").catch(()=>{});setSrc(ShiftData.live());const bad=ShiftData.status.bad;
