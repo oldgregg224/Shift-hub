@@ -225,6 +225,8 @@ S.crewnotes=async()=>{$("#upd").textContent="";setSrc(ShiftData.live());const ro
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div class="note-ts">${esc(x.date)}</div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store()};
 
+const APPVER="v10";
+const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();setSrc(ShiftData.live());
  await ShiftData.load("Brief").catch(()=>{});setSrc(ShiftData.live());const bad=ShiftData.status.bad;
  const c=!has?chip("warn","Not set"):bad==="key"?chip("bad","Didn't work"):bad?chip("warn","Can't reach"):ShiftData.live()?chip("good","Working"):chip("neutral","Saved");
@@ -233,7 +235,8 @@ S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();se
  <div class="meta" style="-webkit-line-clamp:3">Data link ${ShiftData.hasUrl()?"is set":"is not set yet"}. ${has?(ShiftData.live()?"Showing live data.":"Showing sample data."):"Showing sample data until the key is saved."}</div>
  <input id="k" type="password" autocomplete="off" placeholder="Enter shared key" aria-label="Shared key">
  <button class="btn primary block" data-act="key">Save key</button>
- <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>`};
+ <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>
+ <div class="meta" id="ver" style="text-align:center;opacity:.7">Shift Hub ${APPVER}${await swCache()}</div>`};
 
 const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",settings:"Settings"};
 const TABOF={floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools"};

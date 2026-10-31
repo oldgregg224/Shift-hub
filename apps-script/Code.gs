@@ -3,7 +3,7 @@
  * GET  ?key=K&tab=Brief|Labor|Events|Speed|SMG|Roster|Comments|Meta   -> {rows:[{header:value,...}]}
  * GET  ?key=K&action=list&kind=positions|breaks|checklist|fixes|handoff -> {rows}
  * GET  ?key=K&action=list&kind=inventory|waste|equipment|crewnotes -> {rows}
- * POST ?key=K&action=add|update&kind=..(&id=..), body JSON (text/plain) -> Floor_<kind> tabs.
+ * POST ?key=K&action=add|update|upsert&kind=..(&id=..), body JSON (text/plain) -> Floor_<kind> tabs.
  * Tools kinds are stored one field per column (lowercase headers) so other bots can read them. */
 const TABS=['Brief','Labor','Events','Speed','SMG','Roster','Comments','Meta'];
 const KINDS=['positions','breaks','checklist','fixes','handoff','inventory','waste','equipment','crewnotes'];
@@ -35,6 +35,12 @@ function doPost(e){try{auth_(e);const kind=kind_(e),s=floor_(kind),body=JSON.par
   try{if(e.parameter.action==='add'){const id=Utilities.getUuid(),ts=new Date().toISOString();
       delete body.id;delete body.ts;const c=COLS[kind];
       s.appendRow(c?[id,ts].concat(c.cols.map(k=>cell_(body[k]))):[id,ts,JSON.stringify(body)]);return out_({row:Object.assign(body,{id,ts})});}
+    if(e.parameter.action==='upsert'){const id=String(e.parameter.id||'');if(!id)throw new Error('missing id');
+      const ts=new Date().toISOString(),c=COLS[kind];delete body.id;delete body.ts;
+      const row=c?[id,ts].concat(c.cols.map(k=>cell_(body[k]))):[id,ts,JSON.stringify(body)];
+      const v=s.getDataRange().getValues();let hit=0;
+      for(let i=v.length-1;i>=1;i--){if(String(v[i][0])===id){if(!hit){s.getRange(i+1,1,1,row.length).setValues([row]);hit=1;}else s.deleteRow(i+1);}}
+      if(!hit)s.appendRow(row);return out_({row:Object.assign(body,{id,ts})});}
     if(e.parameter.action==='update'){const v=s.getDataRange().getValues();
       const c=COLS[kind],h=v[0];
       for(let i=1;i<v.length;i++){if(String(v[i][0])===String(e.parameter.id)){
