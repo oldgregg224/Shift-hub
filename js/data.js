@@ -1,4 +1,4 @@
-// Tabs: Brief, Labor, Events, Speed, SMG, Roster, Comments, Meta (sample file = data/sample/<tab lowercase>.json).
+// Tabs: Brief, Labor, Events, Speed, SMG, Roster, Comments, Meta, Coverage (sample file = data/sample/<tab lowercase>.json).
 // Reads each tab from the Apps Script web app (GET ?key=..&tab=..), else bundled sample JSON.
 // v12: live GETs run one at a time (Apps Script throttles parallel calls from one user), failures are per tab
 // (one slow tab no longer flips every tab to sample), and the last good live rows per tab are kept in memory +

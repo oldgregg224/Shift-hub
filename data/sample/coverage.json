@@ -1,0 +1,92 @@
+[
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Ben",
+  "positions_skills": "Grill, Fries",
+  "availability_notes": "Can stay late weekdays",
+  "week_hours_so_far": 30,
+  "scheduled_week_hours": 32,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Fay",
+  "positions_skills": "grill , drive-thru order",
+  "availability_notes": "No mornings",
+  "week_hours_so_far": 36,
+  "scheduled_week_hours": 38,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Noah",
+  "positions_skills": "Grill",
+  "availability_notes": "Weekends only",
+  "week_hours_so_far": 20,
+  "scheduled_week_hours": 24,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Rosa",
+  "positions_skills": "Grill,Front counter",
+  "availability_notes": "",
+  "week_hours_so_far": 22,
+  "scheduled_week_hours": 22,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Vic",
+  "positions_skills": "Grill",
+  "availability_notes": "Overnights preferred",
+  "week_hours_so_far": 12,
+  "scheduled_week_hours": 16,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Jon",
+  "positions_skills": "Grill, Fries",
+  "availability_notes": "",
+  "week_hours_so_far": 34,
+  "scheduled_week_hours": 30,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Hana",
+  "positions_skills": "Fries,Front counter",
+  "availability_notes": "After 3 PM",
+  "week_hours_so_far": 18,
+  "scheduled_week_hours": 18,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Lee",
+  "positions_skills": "Drive-thru window, Drive-thru order",
+  "availability_notes": "Open availability",
+  "week_hours_so_far": 10,
+  "scheduled_week_hours": 12,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Max",
+  "positions_skills": "Front counter",
+  "availability_notes": "School nights off",
+  "week_hours_so_far": 25,
+  "scheduled_week_hours": 20,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "first_name": "Zoe",
+  "positions_skills": "Grill, Drive-thru window",
+  "availability_notes": "Can cover overnights",
+  "week_hours_so_far": 8,
+  "scheduled_week_hours": 8,
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ }
+]
