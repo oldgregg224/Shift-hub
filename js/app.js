@@ -345,7 +345,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),2000,null);const rows=(await bl
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v21";
+const APPVER="v22";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -393,7 +393,7 @@ async function show(s,o={}){const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,mo
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
  const had=!o.fresh&&VIEW[vk];if(had)app.innerHTML=VIEW[vk];else if(moved||o.fresh)app.innerHTML=empty("Loading…");
  if(moved)scrollTop_(s);
- try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(h!==VIEW[vk]||!had){app.innerHTML=h;VIEW[vk]=h;if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[vk];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
+ try{const h=await Promise.race([S[s](),new Promise((_,j)=>setTimeout(()=>j(new Error("This screen took too long to load")),40000))]);if(my!==seq)return;if(h!==VIEW[vk]||!had){const keep=moved?{}:Object.fromEntries([...app.querySelectorAll("input[id]:not([type=checkbox]):not([type=password])")].filter(i=>i.value).map(i=>[i.id,i.value]));app.innerHTML=h;for(const id in keep){const el=document.getElementById(id);if(el&&!el.value)el.value=keep[id]}VIEW[vk]=h;if(moved&&!had)scrollTop_(s)}repill(s)}catch(e){if(my!==seq)return;if(had)return;delete VIEW[vk];app.innerHTML=`<div class="card stack" role="alert"><div class="lbl">Couldn't load ${esc(TITLE[s])}${chip("bad","Error")}</div><div class="meta">${esc(e.message)}. Check your connection and try again.</div><button class="btn primary block" type="button" data-retry="${s}">${I("refresh-cw")}Try again</button></div>`}
  clearInterval(timer);if(document.querySelector("[data-since]")){tick();timer=setInterval(tick,30000)}
 }
 // Pill + Last synced always reflect the screen on show, even if another screen's late load touched them.
@@ -413,7 +413,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  const t=e.target.closest("button,input")||e.target,F=window.Floor,v=id=>($("#"+id)||{}).value?.trim();
  try{const a=t.dataset.act;
  if(a==="key"){if(!v("k")){$("#k").focus();return}ShiftData.Key.set(v("k"));meta=null;KEYJUST=true;for(const k in VIEW)delete VIEW[k];await show("settings",{fresh:1});KEYJUST=false;return}
- if(a==="ping"){const o=$("#pingres");o.textContent="Checking…";try{const r=await ShiftData.ping();o.textContent=r.ok?"Script OK · version "+(r.version||"?"):"Script problem: "+r.error}catch(e){o.textContent="Couldn't reach the script ("+e.message+")"}return}
+ if(a==="ping"){const o=$("#pingres");o.textContent="Checking…";try{const r=await ShiftData.ping();o.textContent=r.ok?"Script OK · compatible (script "+(r.version||"?")+")":"Script problem: "+r.error}catch(e){o.textContent="Couldn't reach the script ("+e.message+")"}return}
  if(a==="clearkey"){ShiftData.Key.set("");meta=null;for(const k in VIEW)delete VIEW[k];show("settings");return}
  if(a==="pos"&&v("pp")){const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:v("pp"),name:first(v("pn"))})}
  else if(t.dataset.place){openSheet(t.dataset.place,t.dataset.pos);return}
@@ -427,11 +427,12 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  else if(a==="eq"&&v("eqe")){await F.add("equipment",{equipment:v("eqe"),issue:v("eqi")||"",reported_by:first(v("eqr")),status:"open",fixer:"",updated:new Date().toISOString()});show("equipment");return}
  else if(t.dataset.eq){await F.update("equipment",t.dataset.eq,{status:t.dataset.st,fixer:first(v("fx"+t.dataset.eq)),updated:new Date().toISOString()});show("equipment");return}
  else if(a==="cn"&&v("cnn")&&v("cnt")){const row={date:nowT().date,first_name:first(v("cnn")),type:PICK.ntype,note:v("cnt")};
-  // Optimistic: clear the form and show the note as "Saving" right away; repaint when the save lands.
-  $("#cnn").value="";$("#cnt").value="";const pe=document.createElement("div");pe.className="row";pe.style.cssText="display:block;padding:12px 0";pe.dataset.pending="1";
-  pe.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(row.first_name)}</b>${chip("neutral","Saving…")}</div><div>${esc(row.note)}</div><div class="note-ts">${esc(row.date)}</div>`;
-  let L=document.querySelector("#app .list");if(!L){const em=[...document.querySelectorAll("#app .empty, #app [data-empty]")].pop();L=document.createElement("div");L.className="list";(em||$("#app").lastElementChild).before(L);if(em)em.remove()}L.prepend(pe);
-  const saved=await F.add("crewnotes",row);try{const c=JSON.parse(localStorage.getItem("shifthub_flc_crewnotes")||"[]");if(!saved._pending){c.push(saved);localStorage.setItem("shifthub_flc_crewnotes",JSON.stringify(c))}}catch(e){}
+  // Accepted on this phone first (shows "Pending sync" at once), then sent in the background; the form clears only after that.
+  const saved=await F.add("crewnotes",row);if($("#cnn"))$("#cnn").value="";if($("#cnt"))$("#cnt").value="";
+  if(saved&&saved._pending){try{const c=JSON.parse(localStorage.getItem("shifthub_flc_crewnotes")||"[]");c.push(saved);localStorage.setItem("shifthub_flc_crewnotes",JSON.stringify(c))}catch(e){}}
+  try{const pe=document.createElement("div");pe.className="row";pe.style.cssText="display:block;padding:12px 0";
+   pe.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(row.first_name)}</b>${chip(NST[row.type]||"neutral",row.type)}</div><div>${esc(row.note)}</div><div class="note-ts">${esc(row.date)} ${chip("warn","Pending sync")}</div>`;
+   let L=document.querySelector("#app .list");if(!L){const em=document.querySelector("#app .empty");L=document.createElement("div");L.className="list";if(em)em.replaceWith(L);else $("#app").append(L)}L.prepend(pe);VIEW.crewnotes=app.innerHTML}catch(e){}
   if(cur==="crewnotes")show("crewnotes");return}
  else if(t.dataset.cndel){if(!confirm("Delete this crew note?"))return;await F.remove("crewnotes",t.dataset.cndel);show("crewnotes");return}
  else if(t.dataset.back)await F.update("breaks",t.dataset.back,{back:new Date().toISOString()});

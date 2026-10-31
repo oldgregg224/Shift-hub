@@ -41,24 +41,40 @@ function guard(A){const g=(k,fn,loc,read)=>OLD.has(k)?loc():(read&&TOOLK.has(k)?
 const normDate=v=>{v=v==null?"":String(v);const m=v.match(/^(\d{4}-\d\d-\d\d)T(\d\d):(\d\d)/);if(!m)return v;
  if(m[2]==="00"&&m[3]==="00")return m[1];const d=new Date(v);return isNaN(d)?m[1]:d.toLocaleDateString("en-CA")};
 const norm=r=>{if(r&&"date" in r)r.date=normDate(r.date);return r};
-function shared(W){const MEMO={},FL={},DAY=864e5;
- const flush=async k=>{if(FL[k])return;FL[k]=1;let n=0;try{for(const x of await LocalAdapter.list(k)){if(Date.now()-Date.parse(x.ts||0)>DAY)continue;
-   const row=Object.assign({},x);delete row.id;delete row.ts;delete row._pending;
-   try{await W.add(k,row);await LocalAdapter.remove(k,x.id);n++}catch(e){break}}}finally{FL[k]=0}
-  if(n){delete MEMO[k];try{window.dispatchEvent(new CustomEvent("shifthub:floorsync",{detail:{kind:k}}))}catch(e){}}};
+function shared(W){const MEMO={},FL={},RECENT={},DAY=864e5,SK=k=>"shifthub_shared_"+k;
+ // Last good shared list per kind (persisted) so offline/unreachable still shows shared notes, plus local pending ones.
+ const saveShared=(k,v)=>{MEMO[k]={v,t:Date.now()};try{localStorage.setItem(SK(k),JSON.stringify(v))}catch(e){}};
+ const savedShared=k=>{if(MEMO[k])return MEMO[k].v;try{return JSON.parse(localStorage.getItem(SK(k))||"[]")}catch(e){return[]}};
+ const emit=k=>{try{window.dispatchEvent(new CustomEvent("shifthub:floorsync",{detail:{kind:k}}))}catch(e){}};
+ // Rows the server accepted in the last 2 min stay merged in until a server list contains them (avoids flicker
+ // when a list fetch that started before the save lands after it).
+ const withRecent=(k,rows)=>{const r=RECENT[k]||[],ids=new Set(rows.map(x=>String(x.id)));RECENT[k]=r.filter(x=>!ids.has(String(x.id))&&Date.now()-x._at<12e4);
+  return rows.concat(RECENT[k].map(x=>{const y=Object.assign({},x);delete y._at;return y}))};
  const pend=async k=>(await LocalAdapter.list(k)).filter(x=>Date.now()-Date.parse(x.ts||0)<=DAY).map(x=>Object.assign({},x,{_pending:1}));
- return {name:W.name,place:r=>W.place(r),
-  async list(k){const m=MEMO[k];if(m&&Date.now()-m.t<20000)return m.v.concat(k==="positions"?[]:await pend(k));
-   const rows=(await W.list(k)).map(norm);if(OLD.has(k)||SLOW.has(k)||k==="positions")return rows;
-   MEMO[k]={v:rows,t:Date.now()};const p=await pend(k);if(p.length)flush(k);return rows.concat(p)},
-  async add(k,r){if(k==="positions")return W.add(k,r);
-   try{const x=norm(await W.add(k,r));if(MEMO[k]&&!OLD.has(k))MEMO[k].v.push(x);return x}
-   catch(e){if(/bad key/i.test(e.message||""))throw e;const x=await LocalAdapter.add(k,Object.assign({},r));return Object.assign({},x,{_pending:1})}},
+ const flush=async k=>{if(FL[k]||OLD.has(k)||k==="positions"||navigator.onLine===false)return;FL[k]=1;let n=0;
+  try{for(const x of await LocalAdapter.list(k)){if(Date.now()-Date.parse(x.ts||0)>DAY)continue;
+   const row=Object.assign({},x);delete row.id;delete row.ts;delete row._pending;
+   try{const got=norm(await W.add(k,row));if(OLD.has(k))break;(RECENT[k]=RECENT[k]||[]).push(Object.assign({},got,{_at:Date.now()}));
+    if(MEMO[k])MEMO[k].v.push(got);await LocalAdapter.remove(k,x.id);n++;emit(k)}catch(e){break}}}finally{FL[k]=0}return n};
+ const flushAll=()=>{if(!ShiftData.Key.get())return;Object.keys(localStorage).filter(x=>x.startsWith("shifthub_floor_")).map(x=>x.slice(15)).forEach(k=>{if(k!=="positions")flush(k)})};
+ window.addEventListener("online",flushAll);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")flushAll()});
+ return {name:W.name,place:r=>W.place(r),flush,
+  async list(k){if(k==="positions")return W.list(k);const m=MEMO[k];
+   if(m&&Date.now()-m.t<20000)return withRecent(k,m.v).concat(await pend(k));
+   let rows;if(navigator.onLine===false)rows=savedShared(k);
+   else{rows=(await W.list(k)).map(norm);if(OLD.has(k))return rows;
+    if(SLOW.has(k))rows=savedShared(k); // unreachable: guard returned this phone's list; show the saved shared one instead
+    else saveShared(k,rows)}
+   const p=await pend(k);if(p.length&&!SLOW.has(k))flush(k);return withRecent(k,rows).concat(p)},
+  // Save = accept on this phone first (pending), then send in the background. Never fails unless the key is bad.
+  async add(k,r){if(k==="positions"||OLD.has(k))return W.add(k,r);
+   const x=await LocalAdapter.add(k,Object.assign({},r));flush(k);return Object.assign({},x,{_pending:1})},
   async update(k,i,p){const v=await W.update(k,i,p);const m=MEMO[k];if(m){const x=m.v.find(y=>y.id==i);if(x)Object.assign(x,p)}return v},
   async remove(k,i){if(String(i).length&&(await LocalAdapter.list(k)).some(x=>x.id==i)&&!OLD.has(k)){await LocalAdapter.remove(k,i);return {ok:true}}
-   const v=await W.remove(k,i);if(MEMO[k])MEMO[k].v=MEMO[k].v.filter(y=>y.id!=i);return v}}}
+   const v=await W.remove(k,i);if(MEMO[k])saveShared(k,MEMO[k].v.filter(y=>y.id!=i));if(RECENT[k])RECENT[k]=RECENT[k].filter(y=>y.id!=i);return v}}}
 const WL=wrap(LocalAdapter),WA=shared(wrap(guard(AppsScriptAdapter)));
 window.FloorCompat={normDate,needsUpdate:k=>OLD.has(k),slow:k=>SLOW.has(k)};
-Object.defineProperty(window,"Floor",{get:()=>ShiftData.live()?WA:WL});
+// Shared mode also when offline/unreachable but a key is set and was not rejected, so saved shared lists + pending show.
+Object.defineProperty(window,"Floor",{get:()=>ShiftData.live()||(ShiftData.hasUrl()&&ShiftData.Key.get()&&ShiftData.status.bad!=="key"&&(navigator.onLine===false||ShiftData.status.bad==="net"))?WA:WL});
 window.FloorPos={key:posKey,id:posId,dedupe};
 })();
