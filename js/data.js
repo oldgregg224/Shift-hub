@@ -1,4 +1,4 @@
-// Tabs: Brief, Labor, Events, Speed, SMG, Roster, Meta (sample file = data/sample/<tab lowercase>.json).
+// Tabs: Brief, Labor, Events, Speed, SMG, Roster, Comments, Meta (sample file = data/sample/<tab lowercase>.json).
 // Reads each tab from the Apps Script web app (GET ?key=..&tab=..), else bundled sample JSON.
 (function(){
 const Key={get:()=>localStorage.getItem("shifthub_key")||"",set:k=>{localStorage.setItem("shifthub_key",k||"");st.bad="";st.ok=false}};

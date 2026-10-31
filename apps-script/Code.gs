@@ -1,11 +1,11 @@
 /** Shift Hub backend. Paste into the "Shift Hub Data" sheet: Extensions > Apps Script.
  * Key lives in Project Settings > Script properties: SHIFTHUB_KEY. Never put the key in this file.
- * GET  ?key=K&tab=Brief|Labor|Events|Speed|SMG|Roster|Meta   -> {rows:[{header:value,...}]}
+ * GET  ?key=K&tab=Brief|Labor|Events|Speed|SMG|Roster|Comments|Meta   -> {rows:[{header:value,...}]}
  * GET  ?key=K&action=list&kind=positions|breaks|checklist|fixes|handoff -> {rows}
  * GET  ?key=K&action=list&kind=inventory|waste|equipment|crewnotes -> {rows}
  * POST ?key=K&action=add|update&kind=..(&id=..), body JSON (text/plain) -> Floor_<kind> tabs.
  * Tools kinds are stored one field per column (lowercase headers) so other bots can read them. */
-const TABS=['Brief','Labor','Events','Speed','SMG','Roster','Meta'];
+const TABS=['Brief','Labor','Events','Speed','SMG','Roster','Comments','Meta'];
 const KINDS=['positions','breaks','checklist','fixes','handoff','inventory','waste','equipment','crewnotes'];
 const COLS={
   inventory:{sheet:'Floor_Inventory',cols:['item','unit','on_hand','par']},

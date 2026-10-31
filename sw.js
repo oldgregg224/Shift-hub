@@ -1,4 +1,4 @@
-const C="shifthub-v7",A=["./","index.html","styles.css","config.js","js/icons.js","icon.svg","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","icons/apple-touch-icon.png","js/data.js","js/floor.js","js/app.js","manifest.json","data/sample/roster.json"];
+const C="shifthub-v8",A=["./","index.html","styles.css","config.js","js/icons.js","icon.svg","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","icons/apple-touch-icon.png","js/data.js","js/floor.js","js/app.js","manifest.json","data/sample/roster.json","data/sample/comments.json"];
 // Install fresh copies (bypass HTTP cache) and take over right away.
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(A.map(u=>new Request(u,{cache:"reload"})))))});
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith("shifthub-")&&k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

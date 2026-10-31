@@ -89,11 +89,11 @@ async speed(){const r=await get("Speed");if(!r.length)return keyAlert()+empty("N
  return `<details><summary class="row"><span class="t">${clock(x.hour,1)}</span><span class="v">${mmss(n(x.oepe_sec))}<small>LW ${mmss(n(x.last_week_oepe_sec))} · total ${mmss(n(x.total_time_sec))}</small></span>${chip(s,(isNaN(d)?"":sgn(d)+"s ")+(s==="bad"?"Slow":s==="warn"?"Watch":""))}${I("chevron-down","cv")}</summary>
  <div class="det"><div><b>Total:</b> ${mmss(n(x.total_time_sec))} (LW ${mmss(n(x.last_week_total_sec))})</div>${o+c+w?`<div class="bar"><i style="flex:${o};background:var(--accent)"></i><i style="flex:${c};background:var(--ink-3)"></i><i style="flex:${w};background:var(--warn)"></i></div><div>Order ${o}s · Cash ${c}s · 2nd window ${w}s</div>`:""}</div></details>`}).join("")}</div>`},
 
-async guest(){const r=await get("SMG");if(!r.length)return keyAlert()+empty("No guest scores yet");const f=r.find(x=>x.coaching_focus);
+async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return keyAlert()+empty("No guest scores yet")+cmt;const f=r.find(x=>x.coaching_focus);
  const cm=r.filter(x=>x.low_score_comment_names_removed);
  return keyAlert()+(f?`<div class="tip">${I("target")}<span>${esc(f.coaching_focus)}</span></div>`:"")+
  r.map(x=>{const s=n(x.score),l=n(x.last_week),st=status(s,l,"guest");return `<div class="card"><div class="lbl">${esc(x.channel)}${chip(st,(isNaN(s-l)?"":sgn(s-l)+" · ")+({good:"Up",warn:"Watch",bad:"Down"}[st]||""))}</div><div class="hero">${isNaN(s)?"—":s}</div><div class="meta">last week ${isNaN(l)?"—":l}</div></div>`}).join("")+
- (cm.length?`<details class="card more"><summary>${cm.length} low-score comment${cm.length>1?"s":""}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")},
+ (cm.length?`<details class="card more"><summary>${cm.length} low-score comment${cm.length>1?"s":""}${I("chevron-down","cv")}</summary><div class="det" style="padding:0">${cm.map(x=>`<div><b>${esc(x.channel)}:</b> ${esc(x.low_score_comment_names_removed)}</div>`).join("")}</div></details>`:"")+cmt},
 
 async floor(){$("#upd").textContent="";const F=window.Floor;const sub=floorSub;
  setSrc(ShiftData.live());
@@ -124,6 +124,26 @@ async floor(){$("#upd").textContent="";const F=window.Floor;const sub=floorSub;
   bar=`<input id="hn" placeholder="Note for next manager" aria-label="Note"><button class="btn primary sq" data-act="hand" aria-label="Save note">${I("plus")}</button>`}
  return back+seg+body+store+`<div class="addbar">${bar}</div>`}
 };
+// ---- Guest comments ----
+// Display-side scrub for guest text: emails, phone numbers, long digit runs (order/card numbers).
+const scrub=t=>String(t??"").replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g,"[email]").replace(/\d{11,}/g,"[number]")
+ .replace(/(\+?\d[\s.-]?)?(\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}\b/g,"[phone]").replace(/\d{6,}/g,"[number]");
+let cmtF="all",cmtDays=7;
+async function comments(){let rows=[],live=false;try{const r=await ShiftData.load("Comments");rows=r.rows||[];live=r.live}catch(e){return `<div class="card"><div class="lbl">Comments${chip("bad","Error")}</div><div class="meta">Couldn't load comments.</div></div>`}
+ if(live)rows=rows.filter(x=>String(x.row_type).toUpperCase()==="DATA");
+ else if(rows.length){// sample: shift EXAMPLE dates so the newest is today
+  const mx=rows.map(x=>x.date).sort().pop(),b=new Date(mx+"T12:00:00"),t=new Date();t.setHours(12,0,0,0);
+  rows=rows.map(x=>{const d=new Date(x.date+"T12:00:00"),o=new Date(t);o.setDate(o.getDate()+Math.round((d-b)/864e5));return Object.assign({},x,{date:ymd(o)})})}
+ const since=new Date();since.setDate(since.getDate()-cmtDays+1);const cut=ymd(since);
+ const inRange=rows.filter(x=>String(x.date)>=cut).sort((a,b)=>String(b.date).localeCompare(a.date));
+ const sen=x=>String(x.sentiment).toLowerCase();const list=cmtF==="all"?inRange:inRange.filter(x=>sen(x)===cmtF);
+ const neg=inRange.filter(x=>sen(x)==="negative").length;
+ const sc=x=>{const v=n(x.score);return chip(v>=4?"good":v>=3?"warn":"bad",(isNaN(v)?"—":v)+"/5")};
+ const seg=(g,opts,curv)=>`<div class="seg" role="tablist">${opts.map(([k,l])=>`<button type="button" role="tab" data-${g}="${k}" class="${String(k)===String(curv)?"on":""}" aria-selected="${String(k)===String(curv)}">${l}</button>`).join("")}</div>`;
+ const day=s=>{const d=new Date(s+"T12:00:00");return isNaN(d)?esc(s):d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})};
+ return `<div class="sec">Comments</div><div class="card stack"><div class="lbl">Last ${cmtDays} days${chip(neg?"warn":"good",neg+" negative")}</div>
+ ${seg("cmtf",[["all","All"],["negative","Negative"],["positive","Positive"]],cmtF)}${seg("cmtd",[[7,"7 days"],[14,"14 days"]],cmtDays)}
+ ${list.length?`<div class="list">${list.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="note-ts" style="margin:0;flex:1">${day(x.date)}</span>${sc(x)}${chip(sen(x)==="negative"?"bad":sen(x)==="positive"?"good":"neutral",sen(x)?sen(x)[0].toUpperCase()+sen(x).slice(1):"—")}</div><div style="margin-top:4px">${esc(scrub(x.comment))}</div></div>`).join("")}</div>`:empty(cmtF==="all"?"No comments in this range":"No "+cmtF+" comments in this range")}</div>`}
 // ---- Who's on (Roster) ----
 const SHIFTS=[["6a-2p","6 AM – 2 PM"],["2p-10p","2 PM – 10 PM"],["10p-6a","10 PM – 6 AM"]];
 const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -242,6 +262,8 @@ document.querySelectorAll("[data-i]").forEach(el=>el.outerHTML=I(el.dataset.i));
 $("#gear").innerHTML=I("settings");
 $("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)show(b.dataset.s)};
 app.addEventListener("click",async e=>{const go=e.target.closest("[data-go]");if(go){show(go.dataset.go);return}
+ const cf=e.target.closest("[data-cmtf]");if(cf){cmtF=cf.dataset.cmtf;const y=scrollY;await show("guest");scrollTo(0,y);return}
+ const cdd=e.target.closest("[data-cmtd]");if(cdd){cmtDays=+cdd.dataset.cmtd;const y=scrollY;await show("guest");scrollTo(0,y);return}
  const wh=e.target.closest("[data-who]");if(wh){whoDay=+wh.dataset.who;show("whoson");return}
  const pk=e.target.closest("[data-pick]");if(pk){const g=pk.parentElement.dataset.group;PICK[g]=pk.dataset.pick;pk.parentElement.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===pk));return}
  const fl=e.target.closest("[data-fill]");if(fl){$("#"+fl.dataset.fill).value=fl.dataset.v;$("#wq").focus();return}

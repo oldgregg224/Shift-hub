@@ -1,0 +1,74 @@
+[
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "score": "2",
+  "sentiment": "negative",
+  "comment": "EXAMPLE: Waited 12 min at the window, fries were cold",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "score": "5",
+  "sentiment": "positive",
+  "comment": "EXAMPLE: Super friendly drive-thru, order was perfect",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-29",
+  "score": "1",
+  "sentiment": "negative",
+  "comment": "EXAMPLE: Missing sauce again, call me at 555-201-7788",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-29",
+  "score": "4",
+  "sentiment": "positive",
+  "comment": "EXAMPLE: Clean lobby and fast service",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-28",
+  "score": "3",
+  "sentiment": "negative",
+  "comment": "EXAMPLE: Order #40211938457 was wrong, email me jo@example.com",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-27",
+  "score": "5",
+  "sentiment": "positive",
+  "comment": "EXAMPLE: Best late-night crew",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-25",
+  "score": "2",
+  "sentiment": "negative",
+  "comment": "EXAMPLE: Burger was cold",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-21",
+  "score": "4",
+  "sentiment": "positive",
+  "comment": "EXAMPLE: Quick breakfast",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-10",
+  "score": "1",
+  "sentiment": "negative",
+  "comment": "EXAMPLE: Old comment, should be outside 14 days",
+  "last_updated": "2026-10-30T14:00:00-04:00"
+ }
+]
