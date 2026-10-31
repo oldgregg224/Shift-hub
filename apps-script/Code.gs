@@ -27,10 +27,10 @@ function floor_(kind){const ss=ss_(),c=COLS[kind],name=c?c.sheet:'Floor_'+kind;l
 function tabRows_(name){const s=ss_().getSheetByName(name);if(!s)return[];
   const v=s.getDataRange().getDisplayValues();const h=v.shift()||[];
   return v.filter(r=>r.some(c=>c!=='')).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]);return o;});}
-function floorRows_(s,kind){const v=s.getDataRange().getValues();const h=v.shift()||[];
-  if(COLS[kind])return v.filter(r=>r.some(x=>x!=='')).map(r=>{const o={};h.forEach((k,i)=>o[k]=k==='ts'?iso_(r[i]):(r[i] instanceof Date?iso_(r[i]):r[i]));o.id=String(o.id);return o;});
+function floorRows_(s,kind){const tz=ss_().getSpreadsheetTimeZone();const v=s.getDataRange().getValues();const h=v.shift()||[];
+  if(COLS[kind])return v.filter(r=>r.some(x=>x!=='')).map(r=>{const o={};h.forEach((k,i)=>o[k]=k==='ts'?iso_(r[i]):(r[i] instanceof Date?(k==='date'?Utilities.formatDate(r[i],tz,'yyyy-MM-dd'):k==='time'?Utilities.formatDate(r[i],tz,'HH:mm'):iso_(r[i])):r[i]));o.id=String(o.id);return o;});
   return v.map(r=>Object.assign(JSON.parse(r[2]||'{}'),{id:String(r[0]),ts:r[1]}));}
-const VERSION='v20';
+const VERSION='v21';
 function doGet(e){try{if(e.parameter.action==='ping')return out_({ok:true,version:VERSION});auth_(e);
   if(e.parameter.tab){if(TABS.indexOf(e.parameter.tab)<0)throw new Error('bad tab');return out_({rows:tabRows_(e.parameter.tab)});}
   if(e.parameter.action==='list')return out_({rows:floorRows_(floor_(kind_(e)),e.parameter.kind)});

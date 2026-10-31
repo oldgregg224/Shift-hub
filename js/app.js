@@ -199,7 +199,7 @@ async floor(){FLATE=FLATE||{};const TS=within(toolSync(),2000,null);const F=wind
  const tabs=[["positions","Positions"],["breaks","Breaks"],["checklist","Checklist"],["fixes","Fixes"],["handoff","Notes"]];
  const seg=`<div class="seg" role="tablist">${tabs.map(([k,l])=>`<button type="button" role="tab" data-sub="${k==="handoff"?"notes":k}" class="${k===sub?"on":""}" aria-selected="${k===sub}">${l}</button>`).join("")}</div>`;
  const lp=F.list(sub).then(v=>{try{localStorage.setItem("shifthub_flc_"+sub,JSON.stringify(v))}catch(e){}return v});let late=false;
- const rows=await within(lp,2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE[sub]||0)<30000)return;FLATE[sub]=Date.now();if(cur==="floor"&&floorSub===sub&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("floor")},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_"+sub)||"[]")}catch(e){return[]}});const store=`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
+ const rows=await within(lp,2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE[sub]||0)<3000)return;FLATE[sub]=Date.now();if(cur==="floor"&&floorSub===sub&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("floor")},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_"+sub)||"[]")}catch(e){return[]}});const store=`<p class="upd" style="padding:0;text-align:center">${ShiftData.live()?"Shared with all managers":"Saved on this phone"}</p>`;
  const tm=ts=>new Date(ts).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  const chkRow=(x,attr)=>`<label class="chk"><input type="checkbox" ${attr}="${esc(x.id)}" ${x.done?"checked":""}><span class="box">${I("check")}</span><span>${esc(x.item)}</span></label>`;
  let body="",bar="";
@@ -295,7 +295,7 @@ const SEED=[["Buns","cases",12],["Patties","cases",10],["Fries","cases",15],["Nu
 // Bounded Tools list: answer within ~2.2s from the live list or this phone's last saved copy; repaint once when late data lands.
 const LATE={};
 async function blist(kind,screen){const lp=Floor.list(kind).then(v=>{try{localStorage.setItem("shifthub_flc_"+kind,JSON.stringify(v))}catch(e){}return v});
- return within(lp,2200,()=>{LATE[kind]=1;lp.then(()=>{if(Date.now()-(FLATE[kind]||0)<30000)return;FLATE[kind]=Date.now();if(cur===screen&&!document.querySelector("#app input:focus")&&!$("#sheet"))show(screen)},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_"+kind)||"[]")}catch(e){return[]}})}
+ return within(lp,2200,()=>{LATE[kind]=1;lp.then(()=>{if(Date.now()-(FLATE[kind]||0)<3000)return;FLATE[kind]=Date.now();if(cur===screen&&!document.querySelector("#app input:focus")&&!$("#sheet"))show(screen)},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_"+kind)||"[]")}catch(e){return[]}})}
 const lateNote=k=>LATE[k]?(delete LATE[k],`<p class="upd" style="padding:0;text-align:center">Still loading the shared list, showing saved entries</p>`):"";
 S.inventory=async()=>{const TS=within(toolSync(),2000,null);const rows=(await blist("inventory","inventory")).slice().sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
  const by={};SEED.forEach(([i,u,p])=>by[i.toLowerCase()]={item:i,unit:u,par:p,hist:[]});
@@ -317,7 +317,7 @@ S.inventory=async()=>{const TS=within(toolSync(),2000,null);const rows=(await bl
  store("inventory")+`<div class="addbar"><input id="ini" placeholder="New item" aria-label="New item"><input id="inu" placeholder="Unit" aria-label="Unit" style="max-width:28%"><input id="inp" type="number" inputmode="decimal" placeholder="Par" aria-label="Par" style="max-width:20%"><button class="btn primary sq" data-act="invnew" aria-label="Add item">${I("plus")}</button></div>`};
 const REASONS=["expired","hold time","dropped","wrong order"];
 S.waste=async()=>{const TS=within(toolSync(),2000,null);const lp=Floor.list("waste").then(v=>{try{localStorage.setItem("shifthub_flc_waste",JSON.stringify(v))}catch(e){}return v});let late=false;
- const rows=await within(lp,2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE.waste||0)<30000)return;FLATE.waste=Date.now();if(cur==="waste"&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("waste")},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_waste")||"[]")}catch(e){return[]}});const t=nowT().date;
+ const rows=await within(lp,2200,()=>{late=true;lp.then(()=>{if(Date.now()-(FLATE.waste||0)<3000)return;FLATE.waste=Date.now();if(cur==="waste"&&!document.querySelector("#app input:focus")&&!$("#sheet"))show("waste")},()=>{});try{return JSON.parse(localStorage.getItem("shifthub_flc_waste")||"[]")}catch(e){return[]}});const t=nowT().date;
  const today=rows.filter(x=>x.date===t),tq=today.reduce((a,x)=>a+(n(x.qty)||0),0);
  const wk=new Date(Date.now()-7*864e5);const top={};rows.filter(x=>new Date(x.date+"T12:00:00")>=wk).forEach(x=>{const k=String(x.item).trim();top[k]=(top[k]||0)+(n(x.qty)||0)});
  const tops=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,3);
@@ -343,9 +343,9 @@ S.crewnotes=async()=>{const TS=within(toolSync(),2000,null);const rows=(await bl
  await TS;return back+oldCard("crewnotes")+lateNote("crewnotes")+`<div class="tip">${I("lock")}<span>Manager only · first names only</span></div>
  <div class="card stack"><div class="lbl">New note</div><input id="cnn" placeholder="First name" aria-label="First name">
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
- ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(x.date)}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
+ ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v20";
+const APPVER="v21";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -361,6 +361,7 @@ S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
  <div class="meta" style="-webkit-line-clamp:3">${info}</div>
  <input id="k" type="password" autocomplete="off" placeholder="Enter shared key" aria-label="Shared key">
  <button class="btn primary block" data-act="key">Save key</button>
+ <div class="meta">Script: <code>${esc(ShiftData.maskedUrl())}</code></div><button class="btn block" type="button" data-act="ping">Check script</button><p class="upd" id="pingres" style="padding:0" role="status"></p>
  <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>
  <div class="ver" id="ver">Shift Hub ${APPVER}${await swCache()}</div>`};
 
@@ -412,6 +413,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  const t=e.target.closest("button,input")||e.target,F=window.Floor,v=id=>($("#"+id)||{}).value?.trim();
  try{const a=t.dataset.act;
  if(a==="key"){if(!v("k")){$("#k").focus();return}ShiftData.Key.set(v("k"));meta=null;KEYJUST=true;for(const k in VIEW)delete VIEW[k];await show("settings",{fresh:1});KEYJUST=false;return}
+ if(a==="ping"){const o=$("#pingres");o.textContent="Checking…";try{const r=await ShiftData.ping();o.textContent=r.ok?"Script OK · version "+(r.version||"?"):"Script problem: "+r.error}catch(e){o.textContent="Couldn't reach the script ("+e.message+")"}return}
  if(a==="clearkey"){ShiftData.Key.set("");meta=null;for(const k in VIEW)delete VIEW[k];show("settings");return}
  if(a==="pos"&&v("pp")){const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:v("pp"),name:first(v("pn"))})}
  else if(t.dataset.place){openSheet(t.dataset.place,t.dataset.pos);return}
@@ -424,7 +426,13 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  else if(a==="waste"&&v("wi")){const w=nowT();await F.add("waste",{date:w.date,time:w.time,item:v("wi"),qty:v("wq")||"1",reason:PICK.reason});show("waste");return}
  else if(a==="eq"&&v("eqe")){await F.add("equipment",{equipment:v("eqe"),issue:v("eqi")||"",reported_by:first(v("eqr")),status:"open",fixer:"",updated:new Date().toISOString()});show("equipment");return}
  else if(t.dataset.eq){await F.update("equipment",t.dataset.eq,{status:t.dataset.st,fixer:first(v("fx"+t.dataset.eq)),updated:new Date().toISOString()});show("equipment");return}
- else if(a==="cn"&&v("cnn")&&v("cnt")){await F.add("crewnotes",{date:nowT().date,first_name:first(v("cnn")),type:PICK.ntype,note:v("cnt")});show("crewnotes");return}
+ else if(a==="cn"&&v("cnn")&&v("cnt")){const row={date:nowT().date,first_name:first(v("cnn")),type:PICK.ntype,note:v("cnt")};
+  // Optimistic: clear the form and show the note as "Saving" right away; repaint when the save lands.
+  $("#cnn").value="";$("#cnt").value="";const pe=document.createElement("div");pe.className="row";pe.style.cssText="display:block;padding:12px 0";pe.dataset.pending="1";
+  pe.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(row.first_name)}</b>${chip("neutral","Saving…")}</div><div>${esc(row.note)}</div><div class="note-ts">${esc(row.date)}</div>`;
+  let L=document.querySelector("#app .list");if(!L){const em=[...document.querySelectorAll("#app .empty, #app [data-empty]")].pop();L=document.createElement("div");L.className="list";(em||$("#app").lastElementChild).before(L);if(em)em.remove()}L.prepend(pe);
+  const saved=await F.add("crewnotes",row);try{const c=JSON.parse(localStorage.getItem("shifthub_flc_crewnotes")||"[]");if(!saved._pending){c.push(saved);localStorage.setItem("shifthub_flc_crewnotes",JSON.stringify(c))}}catch(e){}
+  if(cur==="crewnotes")show("crewnotes");return}
  else if(t.dataset.cndel){if(!confirm("Delete this crew note?"))return;await F.remove("crewnotes",t.dataset.cndel);show("crewnotes");return}
  else if(t.dataset.back)await F.update("breaks",t.dataset.back,{back:new Date().toISOString()});
  else if(t.dataset.chk)await F.update("checklist",t.dataset.chk,{done:t.checked});
@@ -432,6 +440,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  else return;show("floor")}catch(err){alert("Could not save: "+err.message+(/no doGet|no doPost/.test(err.message)?". Ask your GM to paste the full Code.gs and deploy a new version.":""))}});
 app.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".addbar input, #k")){const b=e.target.parentElement.querySelector("[data-act]");if(b)b.click()}});
 $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
+window.addEventListener("shifthub:floorsync",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["floor","inventory","waste","equipment","crewnotes"].includes(cur))show(cur)});
 window.addEventListener("shifthub:data",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools"].includes(cur))show(cur)});
 setSrc(false);show("home");
 if(window.caches)caches.keys().then(ks=>ks.filter(k=>k.startsWith("shifthub-")&&k!=="shifthub-"+APPVER).forEach(k=>caches.delete(k))).catch(()=>{});

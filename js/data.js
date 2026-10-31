@@ -74,5 +74,14 @@ async function load(t,o={}){
  catch(e){if(unsup[t])return{rows:[],live:true,src:"unsupported",at:0};const g2=getGood(t);if(g2&&st.bad!=="key")return{rows:g2.rows,live:true,src:"cached",at:g2.t};return sample(t)}}
 const cached=t=>!!getGood(t);
 const failed=t=>fail[t]||null,scriptBroken=()=>st.script==="broken",unsupported=t=>unsup[t]||"";
-window.ShiftData={scriptBroken,setFocus,load,reset,cached,failed,unsupported,api,live,Key,status:st,hasUrl:()=>!!url()};
+// Keyless version check. A v20+ script serves every tab and Tools kind, so any remembered "needs the update" flag is stale.
+async function ping(){const u=new URL(url());u.searchParams.set("action","ping");const r=await fetchT(u,{redirect:"follow",cache:"no-store"},15000);
+ const txt=await r.text();let j;try{j=JSON.parse(txt)}catch(e){if(/Script function not found/i.test(txt)){st.script="broken";return{ok:false,error:"deployed script has no doGet"}}return{ok:false,error:"not JSON (HTTP "+r.status+")"}}
+ if(!j.ok)return{ok:false,version:"",error:j.error==="bad key"?"script is older than v20 (no ping)":(j.error||"no ping")};
+ st.script="ok";st.ver=j.version||"";const was=Object.keys(unsup);
+ for(const k of was)delete unsup[k];try{Object.keys(sessionStorage).filter(k=>k.startsWith("shifthub_unsup_")).forEach(k=>sessionStorage.removeItem(k))}catch(_){}
+ was.forEach(t=>{refresh(t).then(()=>emit(t),()=>emit(t))});return{ok:true,version:j.version||""}}
+if(url())setTimeout(()=>ping().catch(()=>{}),0);
+const maskedUrl=()=>{const m=url().match(/\/s\/([^/]+)\/exec/);return m?"…/s/"+m[1].slice(0,6)+"…"+m[1].slice(-6)+"/exec":(url()?"(set)":"(none)")};
+window.ShiftData={ping,maskedUrl,scriptBroken,setFocus,load,reset,cached,failed,unsupported,api,live,Key,status:st,hasUrl:()=>!!url()};
 })();
