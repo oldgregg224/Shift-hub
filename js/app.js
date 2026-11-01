@@ -37,13 +37,13 @@ async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-met
  // v32: use the NEWEST of Meta and the rows' own stamp, so a stale Meta copy can never hide fresher rows.
  const cs=[m&&(m.last_updated||m.updated),r0.last_updated||r0.updated].filter(Boolean).map(v=>({v,d:new Date(v)}));if(!cs.length)return null;
  const ok=cs.filter(c=>!isNaN(c.d)).sort((a,b)=>b.d-a.d);return ok.length?ok[0]:{v:cs[0].v,d:null}}
-async function setUpd(tab,rows,live,r){if(tab==="Speed"&&cur==="rushes"&&live&&!(rows&&rows.length))return;r=r||{src:live?"live":"sample"};const u=$("#upd");
+async function setUpd(tab,rows,live,r){const scr0=cur;if(tab==="Speed"&&cur==="rushes"&&live&&!(rows&&rows.length))return;r=r||{src:live?"live":"sample"};const u=$("#upd");
  if(!live){CUR={src:"sample",stale:false,tab};u.textContent="Sample data · not live";u.classList.remove("stale");return}
- let t=await syncTime(tab,rows),thr=staleMs(tab);
+ let t=await syncTime(tab,rows),thr=staleMs(tab);if(cur!==scr0)return;// v38: a late write from a screen the user already left must not overwrite this screen's header
  // Rushes: if Speed has live rows with a newer sync time, show that time with Speed's threshold.
  if(tab==="Events"&&cur==="rushes"){const sp=await within(ShiftData.load("Speed"),2500,null);if(sp&&sp.live&&sp.rows&&sp.rows.length){const t2=await syncTime("Speed",sp.rows);if(t2&&t2.d&&(!t||!t.d||t2.d>t.d)){t=t2;thr=staleMs("Speed")}}}
  // v33: while the live fetch is still in flight (saved copy shown), never style it stale; wait for the live result.
- const fl=[r.refreshing&&ShiftData.inflight(tab),metaPend&&r.src!=="cached"&&ShiftData.inflight("Meta")].filter(Boolean);const pend=fl.length>0;
+ const fl=[r.refreshing&&ShiftData.inflight(tab),metaPend&&r.src!=="cached"&&ShiftData.inflight("Meta")].filter(Boolean);const pend=fl.length>0;if(cur!==scr0)return;
  if(pend){const scr=cur;Promise.allSettled(fl).then(()=>{metaPend=false;if(cur===scr&&!document.querySelector("#app input:focus")&&!$("#sheet"))show(scr)})}
  const stale=!pend&&!!(t&&t.d&&Date.now()-t.d>thr);CUR={src:r.src,stale,tab,at:r.at};
  let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(pend?" · checking…":stale?" · stale":""):(pend?"Checking…":"Last synced: not in Sheet");
@@ -375,7 +375,9 @@ function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!i
 window.covRank=covRank;
 let COV={sel:"",role:"",station:"",min:"1",date:"",start:"",end:"",ran:false};
 const SEL='style="width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line,#d5dbe3);border-radius:12px;background:var(--surface,#fff);color:var(--ink,#111);font:inherit;font-size:16px;margin-top:2px"';
-S.cover=async()=>{const R=within(roster(),2500,()=>({rows:[],live:false,r:{src:"slow"}}));const cr=await within(ShiftData.load("Coverage"),2500,()=>({rows:[],src:"slow"})).catch(e=>({rows:[],src:"error",err:e.message}));const {rows,r}=await R;if(cr.src!=="slow"&&cr.src!=="error"&&cr.src!=="unsupported"){await setUpd("Coverage",cr.rows,cr.live!==false,cr);setSrc(cr.live!==false,cr.src)}
+S.cover=async()=>{const rp=roster(),cp=ShiftData.load("Coverage");const R=within(rp,2500,()=>({rows:[],live:false,r:{src:"slow"}}));const cr=await within(cp,2500,()=>({rows:[],src:"slow"})).catch(e=>({rows:[],src:"error",err:e.message}));const {rows,r}=await R;
+ // v38: if Roster or Coverage beat the 2.5 s wait, redraw when they land (a first load has no other redraw), and say so in the header.
+ if(cr.src==="slow"||r.src==="slow"){Promise.allSettled([rp,cp]).then(()=>{if(cur==="cover"&&!$("#sheet")&&!editing())show("cover")});const u=$("#upd");u.textContent="Checking…";u.classList.remove("stale");TABST.cover={c:Object.assign({},CUR),upd:"Checking…",cls:false}}if(cr.src!=="slow"&&cr.src!=="error"&&cr.src!=="unsupported"){await setUpd("Coverage",cr.rows,cr.live!==false,cr);setSrc(cr.live!==false,cr.src)}
  const head=`<button class="btn" data-go="whoson" style="align-self:flex-start">${I("chevron-left")}Who's on</button><div class="tip">${I("lock")}<span>Suggestions only · names as in the Sheet · no contact info</span></div>`;
  if(cr.src==="unsupported")return head+`<div class="card stack" role="status"><div class="lbl">Who can cover needs the Apps Script update${chip("warn","Not shared yet")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script is an older version that doesn't serve the Coverage tab yet. Ask your GM to redeploy the latest Shift Hub Apps Script (v26). Everything else is live.</div></div>`;
  const crew=(cr.rows||[]).filter(x=>!/^(HEADER|NOTE)$/i.test(String(x.row_type||"").trim()));
@@ -489,7 +491,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
 let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
-const APPVER="v37";
+const APPVER="v38";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -616,6 +618,8 @@ setInterval(()=>{if(DEFER&&DEFER===cur&&!editing()&&!document.hidden){DEFER="";s
 window.addEventListener("shifthub:floorsync",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["floor","inventory","waste","equipment","crewnotes"].includes(cur))show(cur)});
 // v32: live data re-fetch on open/return/focus/online and every 3 min (dashboard data is read-only).
 let LASTPULL=Date.now();const pull=(why)=>{if(document.hidden||!ShiftData.Key.get()||Date.now()-LASTPULL<20000)return;LASTPULL=Date.now();TRIG=why||"refresh";meta=null;metaAt=0;ShiftData.reset();
+ // v38: always do a real network refetch of Meta (even on Settings/Tools screens that load no data tab), so every trigger re-checks.
+ ShiftData.load("Meta",{fresh:1}).catch(()=>{});
  if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)};
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull("visible")});window.addEventListener("focus",()=>pull("focus"));window.addEventListener("pageshow",e=>{if(e.persisted)pull("pageshow")});window.addEventListener("online",()=>pull("online"));
 setInterval(()=>{LASTPULL=0;pull("3-min timer")},180000);
