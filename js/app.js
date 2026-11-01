@@ -25,14 +25,14 @@ const kpi=(lbl,val,meta,st,word,go,sm)=>`<button class="card" type="button" ${go
 const qu=(q,u)=>{u=String(u||"");return q+" "+(Math.abs(n(q))===1&&/[^s]s$/i.test(u)?u.replace(/es$/i,m=>/(box|sh|ch)es$/i.test(u)?"":"e").replace(/s$/i,""):u)};
 const empty=t=>`<p class="empty">${esc(t)}</p>`;
 
-let meta=null,metaAt=0;
+let meta=null,metaAt=0,metaPend=false;
 // Last synced time for a tab: Meta.last_updated for that tab, else the rows' own last_updated / updated column.
 const fmtT=d=>d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
 const STALE=90*60000;
 // Per-tab freshness: Events refresh weekly (Mon), SMG/Comments every 4h; others 90 min.
 const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:4.5*36e5};const staleMs=t=>STALE_BY[t]||STALE;
 let CUR={src:"sample",stale:false,tab:""};
-async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-metaAt>60000)){try{const r=await ShiftData.load("Meta");if(r.live){meta=r.rows;metaAt=r.refreshing||r.src==="cached"?0:Date.now()}}catch(e){}}
+async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-metaAt>60000)){try{const r=await ShiftData.load("Meta");if(r.live){meta=r.rows;metaPend=!!(r.refreshing||r.src==="cached");metaAt=metaPend?0:Date.now()}}catch(e){}}
  const m=(meta||[]).find(x=>x.tab===tab);const r0=(rows||[]).find(x=>x&&(x.last_updated||x.updated))||{};
  // v32: use the NEWEST of Meta and the rows' own stamp, so a stale Meta copy can never hide fresher rows.
  const cs=[m&&(m.last_updated||m.updated),r0.last_updated||r0.updated].filter(Boolean).map(v=>({v,d:new Date(v)}));if(!cs.length)return null;
@@ -42,8 +42,10 @@ async function setUpd(tab,rows,live,r){if(tab==="Speed"&&cur==="rushes"&&live&&!
  let t=await syncTime(tab,rows),thr=staleMs(tab);
  // Rushes: if Speed has live rows with a newer sync time, show that time with Speed's threshold.
  if(tab==="Events"&&cur==="rushes"){const sp=await within(ShiftData.load("Speed"),2500,null);if(sp&&sp.live&&sp.rows&&sp.rows.length){const t2=await syncTime("Speed",sp.rows);if(t2&&t2.d&&(!t||!t.d||t2.d>t.d)){t=t2;thr=staleMs("Speed")}}}
- const stale=!!(t&&t.d&&Date.now()-t.d>thr);CUR={src:r.src,stale,tab,at:r.at};
- let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(stale?" · stale":""):"Last synced: not in Sheet";
+ // v33: while the live fetch is still in flight (saved copy shown), never style it stale; wait for the live result.
+ const pend=!!(r.refreshing||(metaPend&&r.src!=="cached"));
+ const stale=!pend&&!!(t&&t.d&&Date.now()-t.d>thr);CUR={src:r.src,stale,tab,at:r.at};
+ let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(pend?" · checking…":stale?" · stale":""):(pend?"Checking…":"Last synced: not in Sheet");
  if(r.src==="cached"&&r.at)txt+=" · saved copy from "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached");TABST[cur]={c:Object.assign({},CUR),upd:txt,cls:stale||r.src==="cached"}}
 const TABST={};
@@ -483,7 +485,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v32";
+const APPVER="v33";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
