@@ -488,7 +488,8 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v36";
+let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
+const APPVER="v37";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -506,7 +507,7 @@ S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
  <button class="btn primary block" data-act="key">Save key</button>
  <div class="meta">Script: <code>${esc(ShiftData.maskedUrl())}</code></div><button class="btn block" type="button" data-act="ping">Check script</button><p class="upd" id="pingres" style="padding:0" role="status"></p>
  <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>
- <div class="ver" id="ver">Shift Hub ${APPVER}${await swCache()}</div>`};
+ <div class="ver" id="lastchk">${chkTxt()}</div><div class="ver" id="ver">Shift Hub ${APPVER}${await swCache()}</div>`};
 
 const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",cover:"Who can cover?",settings:"Settings"};
 const TABOF={cover:"whoson",floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools"};
@@ -614,10 +615,12 @@ $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
 setInterval(()=>{if(DEFER&&DEFER===cur&&!editing()&&!document.hidden){DEFER="";show(cur)}},4000);
 window.addEventListener("shifthub:floorsync",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["floor","inventory","waste","equipment","crewnotes"].includes(cur))show(cur)});
 // v32: live data re-fetch on open/return/focus/online and every 3 min (dashboard data is read-only).
-let LASTPULL=Date.now();const pull=()=>{if(document.hidden||!ShiftData.Key.get()||Date.now()-LASTPULL<20000)return;LASTPULL=Date.now();meta=null;metaAt=0;ShiftData.reset();
+let LASTPULL=Date.now();const pull=(why)=>{if(document.hidden||!ShiftData.Key.get()||Date.now()-LASTPULL<20000)return;LASTPULL=Date.now();TRIG=why||"refresh";meta=null;metaAt=0;ShiftData.reset();
  if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)};
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull()});window.addEventListener("focus",pull);window.addEventListener("pageshow",e=>{if(e.persisted)pull()});window.addEventListener("online",pull);
-setInterval(()=>{LASTPULL=0;pull()},180000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull("visible")});window.addEventListener("focus",()=>pull("focus"));window.addEventListener("pageshow",e=>{if(e.persisted)pull("pageshow")});window.addEventListener("online",()=>pull("online"));
+setInterval(()=>{LASTPULL=0;pull("3-min timer")},180000);
+// v37: Settings "Last checked" (any live refetch completing, even with no data change).
+window.addEventListener("shifthub:checked",()=>{CHK={at:ShiftData.status.checkedAt,why:TRIG};const el=document.getElementById("lastchk");if(el)el.textContent=chkTxt()});
 window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)});
 app.addEventListener("input",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
 app.addEventListener("change",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const m=tmin(e.target.value);if(!isNaN(m))e.target.value=ampm(m)}if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});

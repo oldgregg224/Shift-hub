@@ -48,7 +48,7 @@ function reset(all){for(const k in fail)delete fail[k];for(const k in unsup)dele
 const emit=t=>{try{window.dispatchEvent(new CustomEvent("shifthub:data",{detail:{tab:t}}))}catch(e){}};
 // Fetch one tab live. On failure: remember it for this tab only and retry in the background with backoff.
 function refresh(t){if(inflight[t])return inflight[t];
- const p=api({tab:t}).then(j=>{const g=setGood(t,j.rows||[]);delete fail[t];clearTimeout(timers[t]);delete timers[t];st.ok=true;if(st.bad==="net")st.bad="";return g},
+ const p=api({tab:t}).then(j=>{const g=setGood(t,j.rows||[]);st.checkedAt=Date.now();try{window.dispatchEvent(new CustomEvent("shifthub:checked",{detail:{tab:t}}))}catch(_){}delete fail[t];clearTimeout(timers[t]);delete timers[t];st.ok=true;if(st.bad==="net")st.bad="";return g},
   e=>{console.warn("live load failed",t,e.message);
    if(/bad key/i.test(e.message)){st.bad="key";st.ok=false;throw e}
    // Older deployed Code.gs answers "bad tab" for tabs it does not know (e.g. Roster): the server is reachable, so no retry loop.
