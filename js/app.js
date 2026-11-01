@@ -30,7 +30,16 @@ let meta=null,metaAt=0,metaPend=false;
 const fmtT=d=>d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
 const STALE=90*60000;
 // Per-tab freshness: Events weekly (Mon), SMG/Comments every 4h (4.5h), Roster/Coverage at 6a/2p/10p (8.5h); Brief/Labor/Speed 90 min.
-const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:25*36e5,Roster:8.5*36e5,Coverage:7*864e5};const staleMs=t=>STALE_BY[t]||STALE;
+const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:25*36e5,Roster:8.5*36e5,Coverage:7*864e5};// v39: Brief/Labor/Speed sync hourly 6-9 AM, 11 AM-2 PM, 5-8 PM ET (longest daytime gap ~3h, no runs 8 PM-6 AM).
+// Daytime (6:30 AM-8:30 PM ET): stale if older than 3.5h. Overnight (8:30 PM-6:30 AM ET): stale only if older than
+// the evening's 7 PM ET run window (7 PM today if after 8:30 PM, else 7 PM yesterday). Uses the phone clock, in ET.
+const SCHED=new Set(["Brief","Labor","Speed"]);
+function etMin(){try{const p=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"numeric",hourCycle:"h23"}).formatToParts(new Date());
+ const g=k=>+(p.find(x=>x.type===k)||{}).value;const m=g("hour")*60+g("minute");return isNaN(m)?null:m}catch(e){return null}}
+function schedMs(){const m=etMin();if(m==null)return 10.5*36e5; // fallback: flat 10.5h
+ if(m>=390&&m<1230)return 3.5*36e5;                            // 6:30 AM-8:30 PM ET
+ return ((m>=1230?m:m+1440)-1140)*6e4}                          // minutes since the evening's 7 PM ET
+const staleMs=t=>SCHED.has(t)?schedMs():STALE_BY[t]||STALE;
 let CUR={src:"sample",stale:false,tab:""};
 async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-metaAt>60000)){try{const r=await ShiftData.load("Meta");if(r.live){meta=r.rows;metaPend=!!(r.refreshing||r.src==="cached");metaAt=metaPend?0:Date.now()}}catch(e){}}
  const m=(meta||[]).find(x=>x.tab===tab);const r0=(rows||[]).find(x=>x&&(x.last_updated||x.updated))||{};
@@ -491,7 +500,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
 let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
-const APPVER="v38";
+const APPVER="v39";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
