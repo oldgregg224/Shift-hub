@@ -1,0 +1,58 @@
+[
+{
+"row_type": "DATA",
+"name": "Ana R",
+"week_start": "2026-11-01",
+"scheduled_hours": 32,
+"worked_hours": "",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ben T",
+"week_start": "2026-11-01",
+"scheduled_hours": 24,
+"worked_hours": "",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Cara M",
+"week_start": "2026-11-01",
+"scheduled_hours": 20,
+"worked_hours": "",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Dev P",
+"week_start": "2026-11-01",
+"scheduled_hours": 9,
+"worked_hours": "",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Eli S",
+"week_start": "2026-11-01",
+"scheduled_hours": 38,
+"worked_hours": "",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Gus K",
+"week_start": "2026-11-01",
+"scheduled_hours": 40,
+"worked_hours": "",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Hana L",
+"week_start": "2026-11-01",
+"scheduled_hours": 36,
+"worked_hours": "",
+"last_updated": "2026-10-31T23:15:00-04:00"
+}
+]

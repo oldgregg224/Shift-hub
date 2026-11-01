@@ -9,7 +9,7 @@ function ss_(){return SpreadsheetApp.openById(SHEET_ID);}
  * POST ?key=K&action=delete&kind=..&id=..  -> removes that row.
  * GET  ?action=ping (no key) -> {ok:true,version} to check which Code.gs is deployed.
  * Tools kinds are stored one field per column (lowercase headers) so other bots can read them. */
-const TABS=['Brief','Labor','Events','Speed','SMG','Roster','Comments','Meta','Coverage'];
+const TABS=['Brief','Labor','Events','Speed','SMG','Roster','Comments','Meta','Coverage','Crew','Skills','Availability','DaysOff','WeekHours','SchoolCal'];
 const KINDS=['positions','breaks','checklist','fixes','handoff','inventory','waste','equipment','crewnotes'];
 const COLS={
   inventory:{sheet:'Floor_Inventory',cols:['item','unit','on_hand','par']},
@@ -30,7 +30,7 @@ function tabRows_(name){const s=ss_().getSheetByName(name);if(!s)return[];
 function floorRows_(s,kind){const tz=ss_().getSpreadsheetTimeZone();const v=s.getDataRange().getValues();const h=v.shift()||[];
   if(COLS[kind])return v.filter(r=>r.some(x=>x!=='')).map(r=>{const o={};h.forEach((k,i)=>o[k]=k==='ts'?iso_(r[i]):(r[i] instanceof Date?(k==='date'?Utilities.formatDate(r[i],tz,'yyyy-MM-dd'):k==='time'?Utilities.formatDate(r[i],tz,'HH:mm'):iso_(r[i])):r[i]));o.id=String(o.id);return o;});
   return v.map(r=>Object.assign(JSON.parse(r[2]||'{}'),{id:String(r[0]),ts:r[1]}));}
-const VERSION='v26';
+const VERSION='v27';
 function doGet(e){try{if(e.parameter.action==='ping')return out_({ok:true,version:VERSION});auth_(e);
   if(e.parameter.tab){if(TABS.indexOf(e.parameter.tab)<0)throw new Error('bad tab');return out_({rows:tabRows_(e.parameter.tab)});}
   if(e.parameter.action==='list')return out_({rows:floorRows_(floor_(kind_(e)),e.parameter.kind)});

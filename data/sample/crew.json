@@ -1,0 +1,72 @@
+[
+{
+"row_type": "DATA",
+"name": "Ana R",
+"role": "Crew Member",
+"maintenance": "N",
+"minor": "N",
+"age_band": "18+",
+"phone": "+14075550101",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ben T",
+"role": "Crew Trainer",
+"maintenance": "N",
+"minor": "N",
+"age_band": "18+",
+"phone": "+14075550102",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Cara M",
+"role": "Crew Member",
+"maintenance": "N",
+"minor": "Y",
+"age_band": "16-17",
+"phone": "+14075550103",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Dev P",
+"role": "Crew Member",
+"maintenance": "N",
+"minor": "Y",
+"age_band": "14-15",
+"phone": "+14075550104",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Eli S",
+"role": "Crew Member",
+"maintenance": "N",
+"minor": "",
+"age_band": "",
+"phone": "+14075550105",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Gus K",
+"role": "Primary Maintenance Person",
+"maintenance": "Y",
+"minor": "N",
+"age_band": "18+",
+"phone": "+14075550106",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Hana L",
+"role": "Certified Swing Manager",
+"maintenance": "N",
+"minor": "N",
+"age_band": "18+",
+"phone": "+14075550107",
+"last_updated": "2026-10-31T23:15:00-04:00"
+}
+]

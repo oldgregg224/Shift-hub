@@ -1,0 +1,202 @@
+[
+{
+"row_type": "DATA",
+"name": "Ana R",
+"station": "GRILL REGULAR MENU",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ana R",
+"station": "WINDOW",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ana R",
+"station": "DRIVE THRU",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ana R",
+"station": "FRENCH FRIES",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ben T",
+"station": "GRILL REGULAR MENU",
+"level": 4,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ben T",
+"station": "WINDOW",
+"level": 4,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ben T",
+"station": "DRIVE THRU",
+"level": 4,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Ben T",
+"station": "FRENCH FRIES",
+"level": 4,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Cara M",
+"station": "GRILL REGULAR MENU",
+"level": 3,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Cara M",
+"station": "WINDOW",
+"level": 3,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Cara M",
+"station": "DRIVE THRU",
+"level": 3,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Cara M",
+"station": "FRENCH FRIES",
+"level": 3,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Dev P",
+"station": "GRILL REGULAR MENU",
+"level": 2,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Dev P",
+"station": "WINDOW",
+"level": 2,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Dev P",
+"station": "DRIVE THRU",
+"level": 2,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Dev P",
+"station": "FRENCH FRIES",
+"level": 2,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Eli S",
+"station": "GRILL REGULAR MENU",
+"level": 5,
+"skills_verified": "N",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Eli S",
+"station": "WINDOW",
+"level": 5,
+"skills_verified": "N",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Eli S",
+"station": "DRIVE THRU",
+"level": 5,
+"skills_verified": "N",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Eli S",
+"station": "FRENCH FRIES",
+"level": 5,
+"skills_verified": "N",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Hana L",
+"station": "GRILL REGULAR MENU",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Hana L",
+"station": "WINDOW",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Hana L",
+"station": "DRIVE THRU",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Hana L",
+"station": "FRENCH FRIES",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+},
+{
+"row_type": "DATA",
+"name": "Gus K",
+"station": "MAINTENANCE",
+"level": 5,
+"skills_verified": "Y",
+"last_updated": "2026-10-31T23:15:00-04:00"
+}
+]

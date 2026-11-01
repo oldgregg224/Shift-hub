@@ -30,7 +30,7 @@ let meta=null,metaAt=0,metaPend=false;
 const fmtT=d=>d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
 const STALE=90*60000;
 // Per-tab freshness: Events weekly (Mon), SMG/Comments every 4h (4.5h), Roster/Coverage at 6a/2p/10p (8.5h); Brief/Labor/Speed 90 min.
-const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:25*36e5,Roster:8.5*36e5,Coverage:7*864e5};// v39: Brief/Labor/Speed sync hourly 6-9 AM, 11 AM-2 PM, 5-8 PM ET (longest daytime gap ~3h, no runs 8 PM-6 AM).
+const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:25*36e5,Roster:8.5*36e5,Coverage:7*864e5,Crew:8.5*36e5,Skills:8.5*36e5,DaysOff:8.5*36e5,WeekHours:8.5*36e5,Availability:8.5*36e5,SchoolCal:8*864e5};// v39: Brief/Labor/Speed sync hourly 6-9 AM, 11 AM-2 PM, 5-8 PM ET (longest daytime gap ~3h, no runs 8 PM-6 AM).
 // Daytime (6:30 AM-8:30 PM ET): stale if older than 3.5h. Overnight (8:30 PM-6:30 AM ET): stale only if older than
 // the evening's 7 PM ET run window (7 PM today if after 8:30 PM, else 7 PM yesterday). Uses the phone clock, in ET.
 const SCHED=new Set(["Brief","Labor","Speed"]);
@@ -384,10 +384,10 @@ function covRank(roster,crew,t,cap=40){const iv=span(t.date,t.start,t.end);if(!i
 window.covRank=covRank;
 let COV={sel:"",role:"",station:"",min:"1",date:"",start:"",end:"",ran:false};
 const SEL='style="width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line,#d5dbe3);border-radius:12px;background:var(--surface,#fff);color:var(--ink,#111);font:inherit;font-size:16px;margin-top:2px"';
-S.cover=async()=>{const rp=roster(),cp=ShiftData.load("Coverage");const R=within(rp,2500,()=>({rows:[],live:false,r:{src:"slow"}}));const cr=await within(cp,2500,()=>({rows:[],src:"slow"})).catch(e=>({rows:[],src:"error",err:e.message}));const {rows,r}=await R;
+const coverOld=async(note)=>{const rp=roster(),cp=ShiftData.load("Coverage");const R=within(rp,2500,()=>({rows:[],live:false,r:{src:"slow"}}));const cr=await within(cp,2500,()=>({rows:[],src:"slow"})).catch(e=>({rows:[],src:"error",err:e.message}));const {rows,r}=await R;
  // v38: if Roster or Coverage beat the 2.5 s wait, redraw when they land (a first load has no other redraw), and say so in the header.
  if(cr.src==="slow"||r.src==="slow"){Promise.allSettled([rp,cp]).then(()=>{if(cur==="cover"&&!$("#sheet")&&!editing())show("cover")});const u=$("#upd");u.textContent="Checking…";u.classList.remove("stale");TABST.cover={c:Object.assign({},CUR),upd:"Checking…",cls:false}}if(cr.src!=="slow"&&cr.src!=="error"&&cr.src!=="unsupported"){await setUpd("Coverage",cr.rows,cr.live!==false,cr);setSrc(cr.live!==false,cr.src)}
- const head=`<button class="btn" data-go="whoson" style="align-self:flex-start">${I("chevron-left")}Who's on</button><div class="tip">${I("lock")}<span>Suggestions only · names as in the Sheet · no contact info</span></div>`;
+ const head=`<button class="btn" data-go="whoson" style="align-self:flex-start">${I("chevron-left")}Who's on</button><div class="tip">${I("lock")}<span>Suggestions only · names as in the Sheet · no contact info</span></div>`+(note?`<div class="tip" role="status">${I("info")}<span>${esc(note)}</span></div>`:"");
  if(cr.src==="unsupported")return head+`<div class="card stack" role="status"><div class="lbl">Who can cover needs the Apps Script update${chip("warn","Not shared yet")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script is an older version that doesn't serve the Coverage tab yet. Ask your GM to redeploy the latest Shift Hub Apps Script (v26). Everything else is live.</div></div>`;
  const crew=(cr.rows||[]).filter(x=>!/^(HEADER|NOTE)$/i.test(String(x.row_type||"").trim()));
  const op=shiftNow().op,d0=ymd(op),d1=(()=>{const d=new Date(op);d.setDate(d.getDate()+1);return ymd(d)})();
@@ -419,6 +419,54 @@ S.cover=async()=>{const rp=roster(),cp=ShiftData.load("Coverage");const R=within
   ${o.why.length?`<div class="meta" style="margin:2px 0 0">Excluded: ${o.why.map(w=>w==="overlap"?"overlap ("+o.ov.map(r=>esc(r.position||"shift")+" "+clock(r.start,1)+"–"+clock(r.end,1)+(r.date!==t.date?" "+esc(r.date):"")).join(", ")+")":esc(w)).join(" · ")}</div>`:""}</div>`;
  return head+form+sum+`<div class="sec">Can cover (${res.ok.length})</div>`+(res.ok.length?`<div class="list">${res.ok.map(card).join("")}</div>`:empty("No one fits this shift"))+
   (res.no.length?`<details class="card"><summary class="row"><span class="v txt">Not suggested (${res.no.length})<small>${Object.entries(res.counts).map(([k,n])=>esc(k)+" "+n).join(" · ")}</small></span>${I("chevron-down","cv")}</summary><div class="list">${res.no.map(card).join("")}</div></details>`:"")};
+
+// ---- v40: Who can cover? (Crew / Skills / DaysOff / WeekHours / Availability / SchoolCal tabs; logic in js/cover.js) ----
+const NEWT=["Crew","Skills","DaysOff","WeekHours"],OPTT=["Availability","SchoolCal"];
+let FND={date:"",start:"",end:"",what:"",ran:false};
+S.cover=async()=>{const SF=window.ShiftFinder;const ld=t=>ShiftData.load(t).catch(e=>({rows:[],src:"error",err:e.message}));
+ const ps=NEWT.concat(OPTT).map(ld),rp=roster().catch(()=>({rows:[]}));const all=Promise.all(ps);
+ const got=await within(all,4000,()=>null);
+ const head=`<button class="btn" data-go="whoson" style="align-self:flex-start">${I("chevron-left")}Who's on</button><div class="tip">${I("lock")}<span>Suggestions only · names as in the Sheet · read-only</span></div>`;
+ if(!got){all.then(()=>{if(cur==="cover"&&!$("#sheet")&&!editing())show("cover")});const u=$("#upd");u.textContent="Checking…";u.classList.remove("stale");TABST.cover={c:Object.assign({},CUR),upd:"Checking…",cls:false};return head+`<div class="card"><div class="lbl">Loading crew data…</div></div>`}
+ const [cw,sk,dof,wh,av,sc]=got;
+ // Degrade: before the Apps Script redeploy the new tabs answer "bad tab" -> fall back to the Coverage-based view.
+ const bad=x=>!x||x.src==="unsupported"||x.src==="error"||(!x.rows||!x.rows.length)&&x.src!=="live"&&x.src!=="cached"&&x.src!=="sample";
+ if(!SF||[cw,sk,dof,wh].some(bad)||!(cw.rows||[]).length&&cw.src!=="sample")return coverOld("New crew data pending server update");
+ if(cw.src!=="sample"){await setUpd("Crew",cw.rows,cw.live!==false,cw);setSrc(cw.live!==false,cw.src)}else{const u=$("#upd");u.textContent="Sample data · not live";u.classList.remove("stale")}
+ const m={};try{await syncTime("Crew",cw.rows);(meta||[]).forEach(r=>{if(r&&r.tab)m[String(r.tab).trim()]=r.last_updated})}catch(_){}
+ const tt=(t,lb)=>{const v=m&&m[t];const d=v?new Date(v):null;return esc(lb)+" "+(d&&!isNaN(d)?d.toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"}):"—")};
+ const syn=`<p class="upd" style="padding:0">Synced: ${[["Crew","Crew"],["Skills","Skills"],["DaysOff","Days off"],["WeekHours","Hours"],["SchoolCal","School cal"]].map(([a,b])=>tt(a,b)).join(" · ")}</p>`;
+ const op=shiftNow().op,d0=ymd(op);
+ const roles=[...new Set((cw.rows||[]).map(c=>String(c.role||"").trim()).filter(Boolean))].sort();
+ const sts=[...new Set(STATIONS.concat((sk.rows||[]).map(r=>String(r.station||"").trim().toUpperCase()).filter(Boolean)))];
+ const o_=(v,l,on)=>`<option value="${esc(v)}"${on?" selected":""}>${esc(l)}</option>`,tc=x=>x[0]+x.slice(1).toLowerCase();
+ const nq=(()=>{const d=new Date();return Math.ceil((d.getHours()*60+d.getMinutes())/15)*15%1440})();
+ const tin=(id,v,l)=>`<label class="meta" style="flex:1;margin:0">${l}<input id="${id}" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="e.g. 11a, 2:30p, 1400" aria-label="${l} time" data-tm value="${esc(v)}" style="width:100%"><small class="tmok" data-for="${id}"></small></label>`;
+ const form=`<div class="card stack"><div class="lbl">Shift to cover</div>
+ <label class="meta" style="margin:0;display:block;overflow:visible">Station or role<select id="fwhat" aria-label="Station or role" ${SEL}>${o_("","Choose…",!FND.what)}<optgroup label="Stations">${sts.map(x=>o_("s:"+x,tc(x),FND.what==="s:"+x)).join("")}</optgroup><optgroup label="Roles">${roles.map(x=>o_("r:"+x,x,FND.what==="r:"+x)).join("")}</optgroup></select></label>
+ <label class="meta" style="margin:0">Date<input id="fdate" type="date" aria-label="Date" style="width:100%" value="${esc(FND.date||d0)}"></label><div style="display:flex;gap:8px">${tin("fs",FND.start||ampm(nq),"Start")}${tin("fe",FND.end||ampm((nq+360)%1440),"End")}</div>
+ <button class="btn primary block" type="button" data-act="findcover">Find cover</button></div>`;
+ if(!FND.ran)return head+syn+form;
+ if(!FND.what)return head+syn+form+`<p class="meta">Choose a station or role.</p>`;
+ const a=tmin(FND.start),b=tmin(FND.end),dt=FND.date||d0;if(isNaN(a)||isNaN(b)||a===b)return head+syn+form+`<p class="meta">Enter a start and end time (e.g. 11a, 2:30p, 1400).</p>`;
+ const ty=FND.what[0]==="s"?"station":"role",val=FND.what.slice(2);
+ const res=SF.rank({crew:cw.rows,skills:sk.rows,daysOff:dof.rows,weekHours:wh.rows,avail:av&&av.rows,schoolCal:sc&&sc.src!=="unsupported"&&sc.src!=="error"?sc.rows:[],shift:{date:dt,start:a,end:b,type:ty,value:val}});
+ // Roster overlap (same check as before): anyone already on a shift that overlaps is moved to "can't cover".
+ try{const R=await within(rp,1500,()=>({rows:[]}));const iv=span(dt,hhmm(a),hhmm(b));if(iv){const rs=(R.rows||[]).map(r=>({sp:span(r.date,r.start,r.end),pn:pname(r.first_name),r})).filter(x=>x.sp&&x.sp[0]<iv[1]&&iv[0]<x.sp[1]);
+  res.ok=res.ok.filter(o=>{const pn=pname(o.name),h=rs.find(x=>x.pn.f===pn.f&&(!x.pn.i||!pn.i||x.pn.i===pn.i));if(h){o.why.push("already on "+clock(h.r.start,1)+"–"+clock(h.r.end,1));res.no.push(o);return false}return true});res.no.sort((x,y)=>x.name.localeCompare(y.name))}}catch(_){}
+ const lbl=ty==="station"?tc(val):val;
+ const sum=`<div class="card"><div class="lbl">${esc(lbl)} · ${esc(dt)} ${esc(ampm(a))}–${esc(ampm(b))}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:10">${ty==="station"?"Ranked by "+esc(lbl)+" level (verified skills first), then hours left. ":"Same role in Harri, ranked by hours left. "}Approved time off excludes; pending is a caution. Hours left = 40 (overtime) or the minor weekly cap minus this week's scheduled hours. Minors: Florida FS 450.081 (${res.schoolNight?"school night":"no school next day"}${res.calKnown?", per SchoolCal":", assumed: school Mon–Fri, Aug 10–May 31"}). Waivers and exemptions: manager decides.${res.hasAv?"":" Availability not in Harri — not checked."}</div></div>`;
+ const card=o=>{const t=SF.telOf(o.phone),ch=[];
+  if(o.lvl!==null&&ty==="station")ch.push(chip(o.verified?"good":"warn","Level "+o.lvl+(o.verified?"":" · unverified")));
+  if(!o.band)ch.push(chip("warn","Age unknown — check"));else if(o.band!=="18+")ch.push(chip("neutral","Minor "+o.band));
+  o.warn.filter(w=>!/^age unknown/.test(w)).forEach(w=>ch.push(chip("warn",w)));
+  const av_=o.avail===null?"availability not in Harri":o.avail.length?"Harri availability: "+o.avail.map(r=>[r.day,r.start&&r.end?r.start+"–"+r.end:""].filter(Boolean).join(" ")).join(", "):"no availability rows";
+  return `<div class="row" style="display:block;padding:10px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(o.name)}</b>${o.why.length?"":chip(o.after<0?"bad":o.after<4?"warn":"good",h1(Math.max(0,o.after))+" h left"+(o.cap!==40?" (minor cap "+o.cap+")":""))}</div>
+  <div class="meta" style="margin:2px 0 0">${esc(o.role||"")}${o.known?" · scheduled "+h1(o.wk)+" h this week":""}</div>
+  ${ch.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0">${ch.join("")}</div>`:""}
+  ${o.why.length?`<div class="meta" style="margin:2px 0 0">Can't: ${o.why.map(esc).join(" · ")}</div>`:`<div class="meta" style="margin:2px 0 0"><small>${esc(av_)}</small></div>${t?`<a class="btn block" style="margin-top:6px" href="${esc(t.href)}">${I("phone")}Call ${esc(o.name.split(" ")[0])} · ${esc(t.label)}</a>`:""}`}</div>`};
+ return head+syn+form+sum+`<div class="sec">Can cover (${res.ok.length})</div>`+(res.ok.length?`<div class="list">${res.ok.map(card).join("")}</div>`:empty("No one fits this shift"))+
+  (res.no.length?`<details class="card"><summary class="row"><span class="v txt">Can't cover (${res.no.length})</span>${I("chevron-down","cv")}</summary><div class="list">${res.no.map(card).join("")}</div></details>`:"")};
 
 // ---- Tools ----
 const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],["inventory","Inventory","package","Counts, low stock, order list"],["waste","Waste log","trash","Quick log, daily totals"],["equipment","Equipment","wrench","Issues and fixes"],["crewnotes","Crew notes","notebook","Training, praise, call-outs"],["cover","Who can cover?","users","Suggest crew for an open shift"]];
@@ -500,7 +548,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
 let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
-const APPVER="v39";
+const APPVER="v40";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -593,6 +641,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  if(t.tagName==="BUTTON"&&t.dataset.act){if(t.dataset.busy)return;t.dataset.busy="1";t.disabled=true;setTimeout(()=>{t.disabled=false;delete t.dataset.busy},1500)}
  const clr=()=>app.querySelectorAll(".addbar input,.card.stack input").forEach(i=>{if(!/^fx/.test(i.id))i.value=""});
  try{const a=t.dataset.act;
+ if(a==="findcover"){FND={what:v("fwhat")||"",date:v("fdate")||"",start:v("fs")||"",end:v("fe")||"",ran:true};show("cover",{force:1});return}
  if(a==="cover"){COV={sel:v("cvsel")||"manual",role:v("cvrole")||"",station:v("cvst")||"",min:v("cvmin")||"1",date:v("cvdate")||"",start:v("cvs")||"",end:v("cve")||"",ran:true};show("cover",{force:1});return}
  if(a==="key"){if(!v("k")){$("#k").focus();return}ShiftData.Key.set(v("k"));meta=null;KEYJUST=true;for(const k in VIEW)delete VIEW[k];await show("settings",{fresh:1});KEYJUST=false;return}
  if(a==="ping"){const o=$("#pingres");o.textContent="Checking…";try{const r=await ShiftData.ping();o.textContent=r.ok?"Script OK · compatible (script "+(r.version||"?")+")":"Script problem: "+r.error}catch(e){o.textContent="Couldn't reach the script ("+e.message+")"}return}
