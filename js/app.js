@@ -29,8 +29,8 @@ let meta=null,metaAt=0,metaPend=false;
 // Last synced time for a tab: Meta.last_updated for that tab, else the rows' own last_updated / updated column.
 const fmtT=d=>d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
 const STALE=90*60000;
-// Per-tab freshness: Events refresh weekly (Mon), SMG/Comments every 4h; others 90 min.
-const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:4.5*36e5};const staleMs=t=>STALE_BY[t]||STALE;
+// Per-tab freshness: Events weekly (Mon), SMG/Comments every 4h (4.5h), Roster/Coverage at 6a/2p/10p (8.5h); Brief/Labor/Speed 90 min.
+const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:4.5*36e5,Roster:8.5*36e5,Coverage:8.5*36e5};const staleMs=t=>STALE_BY[t]||STALE;
 let CUR={src:"sample",stale:false,tab:""};
 async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-metaAt>60000)){try{const r=await ShiftData.load("Meta");if(r.live){meta=r.rows;metaPend=!!(r.refreshing||r.src==="cached");metaAt=metaPend?0:Date.now()}}catch(e){}}
  const m=(meta||[]).find(x=>x.tab===tab);const r0=(rows||[]).find(x=>x&&(x.last_updated||x.updated))||{};
@@ -485,7 +485,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v33";
+const APPVER="v34";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
