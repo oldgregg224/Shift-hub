@@ -29,7 +29,7 @@ function pump(){if(busy||!Q.length)return;let i=Q.findIndex(x=>focus.has(x.key))
 function serial(fn,key){return new Promise((res,rej)=>{Q.push({fn,key,res,rej});pump()})}
 function setFocus(keys){focus=new Set(keys||[])}
 async function api_(params,body){const u=new URL(url());
- Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));u.searchParams.set("key",Key.get());
+ Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));u.searchParams.set("key",Key.get());if(!body)u.searchParams.set("_",Date.now());
  // GET follows Apps Script's redirect; POST uses text/plain to avoid a CORS preflight.
  const r=await fetchT(u,body?{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body),redirect:"follow"}:{redirect:"follow",cache:"no-store"});
  // Apps Script answers an HTML error page (not JSON) when the deployed project has no doGet/doPost, e.g. an empty or partial paste.

@@ -32,9 +32,11 @@ const STALE=90*60000;
 // Per-tab freshness: Events refresh weekly (Mon), SMG/Comments every 4h; others 90 min.
 const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:4.5*36e5};const staleMs=t=>STALE_BY[t]||STALE;
 let CUR={src:"sample",stale:false,tab:""};
-async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-metaAt>60000)){try{const r=await ShiftData.load("Meta");if(r.live){meta=r.rows;metaAt=Date.now()}}catch(e){}}
+async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-metaAt>60000)){try{const r=await ShiftData.load("Meta");if(r.live){meta=r.rows;metaAt=r.refreshing||r.src==="cached"?0:Date.now()}}catch(e){}}
  const m=(meta||[]).find(x=>x.tab===tab);const r0=(rows||[]).find(x=>x&&(x.last_updated||x.updated))||{};
- const v=(m&&(m.last_updated||m.updated))||r0.last_updated||r0.updated||"";if(!v)return null;const d=new Date(v);return{v,d:isNaN(d)?null:d}}
+ // v32: use the NEWEST of Meta and the rows' own stamp, so a stale Meta copy can never hide fresher rows.
+ const cs=[m&&(m.last_updated||m.updated),r0.last_updated||r0.updated].filter(Boolean).map(v=>({v,d:new Date(v)}));if(!cs.length)return null;
+ const ok=cs.filter(c=>!isNaN(c.d)).sort((a,b)=>b.d-a.d);return ok.length?ok[0]:{v:cs[0].v,d:null}}
 async function setUpd(tab,rows,live,r){if(tab==="Speed"&&cur==="rushes"&&live&&!(rows&&rows.length))return;r=r||{src:live?"live":"sample"};const u=$("#upd");
  if(!live){CUR={src:"sample",stale:false,tab};u.textContent="Sample data · not live";u.classList.remove("stale");return}
  let t=await syncTime(tab,rows),thr=staleMs(tab);
@@ -481,7 +483,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${pick("ntype",NTYPES,PICK.ntype)}<input id="cnt" placeholder="Note" aria-label="Note"><button class="btn primary block" data-act="cn">Save note</button></div>
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
-const APPVER="v31";
+const APPVER="v32";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -606,7 +608,12 @@ app.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".addbar
 $("#gear").onclick=()=>show("settings");$("#src").onclick=()=>show("settings");
 setInterval(()=>{if(DEFER&&DEFER===cur&&!editing()&&!document.hidden){DEFER="";show(cur)}},4000);
 window.addEventListener("shifthub:floorsync",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["floor","inventory","waste","equipment","crewnotes"].includes(cur))show(cur)});
-window.addEventListener("shifthub:data",()=>{if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)});
+// v32: live data re-fetch on open/return/focus/online and every 3 min (dashboard data is read-only).
+let LASTPULL=Date.now();const pull=()=>{if(document.hidden||!ShiftData.Key.get()||Date.now()-LASTPULL<20000)return;LASTPULL=Date.now();meta=null;metaAt=0;ShiftData.reset();
+ if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)};
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull()});window.addEventListener("focus",pull);window.addEventListener("pageshow",e=>{if(e.persisted)pull()});window.addEventListener("online",pull);
+setInterval(()=>{LASTPULL=0;pull()},180000);
+window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)});
 app.addEventListener("input",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
 app.addEventListener("change",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const m=tmin(e.target.value);if(!isNaN(m))e.target.value=ampm(m)}if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});
 setSrc(false);show("home");
