@@ -83,5 +83,5 @@ async function ping(){const u=new URL(url());u.searchParams.set("action","ping")
  was.forEach(t=>{refresh(t).then(()=>emit(t),()=>emit(t))});return{ok:true,version:j.version||""}}
 if(url())setTimeout(()=>ping().catch(()=>{}),0);
 const maskedUrl=()=>{const m=url().match(/\/s\/([^/]+)\/exec/);return m?"…/s/"+m[1].slice(0,6)+"…"+m[1].slice(-6)+"/exec":(url()?"(set)":"(none)")};
-window.ShiftData={ping,maskedUrl,scriptBroken,setFocus,load,reset,cached,failed,unsupported,api,live,Key,status:st,hasUrl:()=>!!url()};
+window.ShiftData={inflight:t=>inflight[t]||null,ping,maskedUrl,scriptBroken,setFocus,load,reset,cached,failed,unsupported,api,live,Key,status:st,hasUrl:()=>!!url()};
 })();
