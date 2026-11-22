@@ -1,4 +1,4 @@
-// Shift Hub v41: "Who can cover?" shift-finder logic (pure functions, no DOM; unit-tested in tests/cover.test.js).
+// Shift Hub v42: "Who can cover?" shift-finder logic (pure functions, no DOM; unit-tested in tests/cover.test.js).
 // Inputs are Sheet rows: Crew, Skills, DaysOff, WeekHours, Availability, SchoolCal. Read-only, suggestions only.
 // Florida minor rules follow Florida Statutes 450.081 (http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0400-0499/0450/Sections/0450.081.html).
 (function(root){
@@ -6,7 +6,12 @@ const DAY=864e5;
 const nk=s=>String(s||"").trim().toLowerCase().replace(/\./g,"").replace(/\s+/g," ");
 const yes=v=>/^(y|yes|true|1|x)$/i.test(String(v||"").trim());
 const isData=r=>!/^(header|example|note)$/i.test(String(r.row_type||"").trim());
-const dOf=s=>String(s||"").slice(0,10);
+// Sheet dates may be ISO or M/D/YYYY. Compare the calendar day, not a raw prefix.
+function dOf(s){s=String(s||"").trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+ if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+ m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+ if(m){const y=m[3].length===2?"20"+m[3]:m[3];return y+"-"+m[1].padStart(2,"0")+"-"+m[2].padStart(2,"0")}
+ return s.slice(0,10)}
 const wday=d=>new Date(d+"T12:00:00Z").getUTCDay(); // 0 Sun .. 6 Sat
 const addD=(d,n)=>new Date(Date.parse(d+"T12:00:00Z")+n*DAY).toISOString().slice(0,10);
 const h1=n=>String(Math.round(n*10)/10);
@@ -51,8 +56,15 @@ const isMgr=r=>/manager/i.test(r||"");
 // Main ranking. inp={crew,skills,daysOff,weekHours,avail,schoolCal,shift:{date,start,end,type:"station"|"role",value}}
 function rank(inp){const sh=inp.shift,cal=schoolCal(inp.schoolCal);const len=((sh.end<=sh.start?sh.end+1440:sh.end)-sh.start)/60;
  const sk={},vf={};(inp.skills||[]).filter(isData).forEach(r=>{const k=nk(r.name),st=String(r.station||"").trim().toUpperCase();if(!k||!st)return;const l=parseInt(r.level,10);(sk[k]=sk[k]||{})[st]=isNaN(l)?null:l;(vf[k]=vf[k]||{})[st]=!/^n/i.test(String(r.skills_verified||"").trim())});
+ // Time off only. availability_approved is a Harri availability edit, not an approved day off
+ // (that word "approved" must not exclude someone). availability_pending is its own caution.
  const off={};(inp.daysOff||[]).filter(isData).forEach(r=>{if(dOf(r.date)!==sh.date)return;const k=nk(r.name),t=String(r.type||"").toLowerCase();if(!k)return;
-  if(/approved/.test(t)||yes(r.time_off_approved))off[k]="approved";else if((/pending/.test(t)||yes(r.time_off_pending))&&off[k]!=="approved")off[k]="pending"});
+  const isTO=/time[\s_-]*off/.test(t),isAv=/avail/.test(t);
+  const approved=(isTO&&/approved/.test(t))||yes(r.time_off_approved);
+  const pending=(isTO&&/pending/.test(t))||(!isAv&&!isTO&&/pending/.test(t))||yes(r.time_off_pending);
+  if(approved)off[k]="approved";
+  else if(pending&&off[k]!=="approved")off[k]="pending";
+  else if(isAv&&/pending/.test(t)&&!off[k])off[k]="avail"});
  const ws=addD(sh.date,-wday(sh.date)); // Sunday week start (WeekHours week_start is a Sunday)
  // v41: worked_hours (when the sync fills it) wins over scheduled_hours for the cap/OT math; both are shown.
  const pf=v=>{const x=parseFloat(String(v==null?"":v).replace(/[^0-9.\-]/g,""));return isNaN(x)?null:x};
@@ -69,7 +81,9 @@ function rank(inp){const sh=inp.shift,cal=schoolCal(inp.schoolCal);const len=((s
   if(isSt){lvl=sk[k]&&STU in sk[k]?sk[k][STU]:null;ver=vf[k]&&STU in vf[k]?vf[k][STU]:true;if(!maint&&(lvl===null||!(lvl>=1)))why.push("no "+st.toLowerCase()+" skill level")}
   else if(nk(c.role)!==nk(st))why.push("different role");
   if(isSt&&!maint&&isMgr(c.role))why.push("manager");
-  if(off[k]==="approved")why.push("approved time off "+sh.date);if(off[k]==="pending")warn.push("pending time off");
+  if(off[k]==="approved")why.push("approved time off "+sh.date);
+  if(off[k]==="pending")warn.push("pending time off "+sh.date);
+  if(off[k]==="avail")warn.push("pending availability change "+sh.date);
   const known=k in wh,hw=known?wh[k]:{s:null,w:null},basis=hw.w!==null?"worked":hw.s!==null?"scheduled":"",wk=hw.w!==null?hw.w:hw.s!==null?hw.s:0;if(!known)warn.push("week hours not in Sheet");
   let cap=40;if(b==="16-17"||b==="14-15"){const m=minorCheck(b,sh,cal,wk);why.push(...m.no);warn.push(...m.warn);cap=m.cap}
   else if(!b)warn.push("age unknown — check");

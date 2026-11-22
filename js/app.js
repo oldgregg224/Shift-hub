@@ -7,9 +7,9 @@ const money=v=>isNaN(v)?"—":"$"+Math.round(v).toLocaleString("en-US");
 const pct=v=>isNaN(v)?"—":v.toFixed(1)+"%";
 const mmss=s=>isNaN(s)?"—":Math.floor(s/60)+":"+String(Math.round(s%60)).padStart(2,"0");
 const sgn=(v,d=0)=>(v>0?"+":v<0?"−":"")+Math.abs(v).toFixed(d);
-// "20:30" -> "8:30 PM"; short "11a"
-function clock(t,short){if(window.FloorCompat&&/^\d{4}-\d\d-\d\dT/.test(t||""))t=FloorCompat.fmtTime(t);const m=/^(\d{1,2}):(\d{2})/.exec(t||"");if(!m)return esc(t);let h=+m[1];const ap=h>=12?(short?"p":" PM"):(short?"a":" AM");h=h%12||12;
- return short?(m[2]==="00"?h+ap:h+":"+m[2]+ap):h+":"+m[2]+ap}
+// "20:30" -> "8:30 PM"; short "11a". "6:30 PM" stays PM (the suffix is part of the time).
+function clock(t,short){if(window.FloorCompat&&/^\d{4}-\d\d-\d\dT/.test(t||""))t=FloorCompat.fmtTime(t);
+ const s=ShiftPresent.formatClock(t,!!short);return s==null?esc(t):esc(s)}
 const WORD={good:"On target",warn:"Watch",bad:"Over"};
 const chip=(st,txt)=>`<span class="chip ${st}">${esc(txt??WORD[st])}</span>`;
 // status(value,target,dir): dir "low" = lower is better.
@@ -71,7 +71,9 @@ function setSrc(live,src){if(src)CUR.src=src;else if(!live)CUR.src="sample";else
  p.setAttribute("aria-label",(s==="live"?"Live data":s==="cached"?"Saved live data":keyMsg()||"Sample data")+". Open settings")}
 const keyAlert=()=>ShiftData.status.bad==="key"||(CUR.src==="sample"&&keyMsg())?`<button class="alert" type="button" data-go="settings">${I("siren")}<div><b>${esc(keyMsg())}</b><span>Tap to check the key in Settings</span></div></button>`:"";
 let LIVE=false;
-async function get(tab){const r=await ShiftData.load(tab);LIVE=r.live;CUR.src=r.src;await setUpd(tab,r.rows,r.live,r);setSrc(r.live,r.src);return r.rows}
+const LOADED={};
+async function get(tab){const r=await ShiftData.load(tab);LOADED[tab]=r;LIVE=r.live;CUR.src=r.src;await setUpd(tab,r.rows,r.live,r);setSrc(r.live,r.src);return r.rows}
+const holdCard=t=>`<div class="card stack" role="status"><div class="lbl">${esc(t)}</div><div class="meta">Waiting for the live Sheet.</div></div>`;
 // "Now" row: live = latest row; sample = row for the current clock hour, clamped to the sample's range.
 // ---- Hourly rows (Labor, Speed): tolerate real Sheet shapes ----
 // Column names vary: match by normalized key against aliases. Hours may be "06:00", "6", "6:00 AM", "6a", "14"; ALL/Total rows are day totals.
@@ -160,6 +162,8 @@ async home(){const r=await get("Brief"),b=r[0]||{};const EX=homeExtras();
  kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+preHome(X.pre)+oosHome(X.oos)+await whoHome()},
 
 async labor(){const r=await get("Labor");
+ const hasToday=(r||[]).some(x=>ShiftPresent.isoDate(fld(x,["date","business_date","day"]))===ymd(new Date())&&!/^(header|example|note|prep|baseline)$/i.test(String(x.row_type||"")));
+ if(ShiftPresent.paintHold(LOADED.Labor,hasToday))return keyAlert()+holdCard("Checking today's labor…");
  const LP=["labor_pct","labor_percent","labor_pct_actual","actual_labor_pct","actual_pct","crew_labor_pct","labor"],TP=["target_pct","labor_target_pct","target","goal_pct","labor_goal_pct","projected_labor_pct","labor_projection_pct"],
  AH=["actual_hours","labor_hours","worked_hours","actual_hrs","hours_worked","hours"],CH=["cap_hours","scheduled_hours","planned_hours","budget_hours","cap_hrs","sched_hours","projected_hours"],SL=["sales","net_sales","sales_actual","actual_sales"];
  const has=x=>!isNaN(num(x,LP))||!isNaN(num(x,AH));const {hours,total}=hourly(r,has);
@@ -181,6 +185,7 @@ async labor(){const r=await get("Labor");
 
 async rushes(){const r=await get("Events");const d0=new Date(),today=`${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,"0")}-${String(d0.getDate()).padStart(2,"0")}`;
  const t=r.filter(x=>x.date===today),wk=new Date(d0.getTime()+7*864e5).toISOString().slice(0,10),nx=r.filter(x=>x.date>today&&x.date<=wk).sort((a,b)=>a.date<b.date?-1:1);
+ if(ShiftPresent.paintHold(LOADED.Events,t.length+nx.length>0))return keyAlert()+holdCard("Checking events…");
  const win=x=>{const a=clock(x.rush_window_start).replace(":00",""),b=clock(x.rush_window_end).replace(":00","");const pa=a.slice(-2);return (b.endsWith(pa)&&/[AP]M$/.test(a)?a.slice(0,-3):a)+"–"+b};
  const day=s=>{const d=new Date(s+"T12:00:00");return isNaN(d)?esc(s):d.toLocaleDateString("en-US",{weekday:"short"})+" "+d.getDate()};
  const src=x=>x.source_url?`<a class="src-link" href="${safeUrl(x.source_url)}" target="_blank" rel="noopener noreferrer">${I("external-link")}Source</a>`:"";
@@ -190,11 +195,13 @@ async rushes(){const r=await get("Events");const d0=new Date(),today=`${d0.getFu
  <div class="det" style="padding-left:0">${x.prep_notes?`<div><b>Prep:</b> ${esc(x.prep_notes)}</div>`:""}${x.runner_timing?`<div><b>Runner:</b> ${esc(x.runner_timing)}</div>`:""}${src(x)}</div></details>`).join("")}</div>`:empty("Nothing coming up"))},
 
 async speed(){const r=await get("Speed");
- // v41: cut down to need-to-know: day total (hour=ALL row), the latest hour, today's notes, and only the hours that are off.
+ // Need-to-know: today's day total (hour=ALL), the latest hour, today's notes, and only the hours that are off.
+ // A later PREP row that only has last-week times must not become "the latest day".
  const OE=["oepe_sec","oepe","oepe_seconds","avg_oepe_sec","oepe_avg_sec"],LW=["last_week_oepe_sec","lw_oepe_sec","last_week_oepe","oepe_last_week_sec"],TT=["total_time_sec","total_sec","total_time","avg_total_sec"],LT=["last_week_total_sec","lw_total_sec"],
  SA=["sales","net_sales","sales_actual","actual_sales"],SP=["sales_proj","sales_projection","projected_sales","sales_projected","proj_sales"],HR=["hours","labor_hours","actual_hours","crew_hours"],HN=["hours_need","hours_needed","need_hours","needed_hours"],NT=["pre_rush_positioning_note","positioning_note","note","notes"];
- const has=x=>!isNaN(num(x,OE))||!isNaN(num(x,TT));const hasAny=x=>has(x)||!isNaN(num(x,LW))||!isNaN(num(x,SA));
- const {hours,total}=hourly(r,hasAny);const today=ymd(new Date()),dOf=x=>String(fld(x,["date","business_date","day"])||"").slice(0,10);
+ const has=x=>!isNaN(num(x,OE))||!isNaN(num(x,TT));
+ const today=ymd(new Date()),slice=ShiftPresent.speedSlice(r,today),{hours,total}=slice,dOf=x=>ShiftPresent.isoDate(fld(x,["date","business_date","day"]));
+ if(ShiftPresent.paintHold(LOADED.Speed,slice.date===today&&slice.hasTimes))return keyAlert()+holdCard("Checking today's times…");
  const note=x=>String(fld(x,["pre_rush_positioning_note","positioning_note"])||"").trim();
  const tips=[...new Set(r.filter(x=>!/^(header|example)$/i.test(String(x.row_type||""))&&dOf(x)===today).map(note).filter(Boolean))];
  if(!hours.length&&!total)return keyAlert()+tips.map(t=>`<div class="tip">${I("lightbulb")}<span>${esc(t)}</span></div>`).join("")+empty("No speed data yet");
@@ -208,6 +215,7 @@ async speed(){const r=await get("Speed");
   if(!isNaN(hr)&&!isNaN(hn)&&hr>hn)o.push(["warn","+"+h2(hr-hn)+" hrs"]);return o};
  const line=x=>{const sa=num(x,SA),sp=num(x,SP),hr=num(x,HR),hn=num(x,HN);return [isNaN(sa)?"":"Sales "+money(sa)+(isNaN(sp)?"":" of "+money(sp)),isNaN(hr)?"":"Hours "+h2(hr)+(isNaN(hn)?"":" vs need "+h2(hn))].filter(Boolean)};
  const N=pickNow(hours,has);const lwOnly=!hours.some(o=>has(o.x));
+ if(N&&slice.date&&slice.date!==today)N.lbl=N.lbl.replace(/^Now/,"Latest");
  const tot=total,totDay=tot?(dOf(tot)||today):""; // hourly() already keeps the total for the latest date with data
  const dayCard=tot?(()=>{const x=tot,oe=num(x,OE),lw=num(x,LW),cd=oe-lw,s=isNaN(lw)?"neutral":status(oe,lw,"oepe"),sa=num(x,SA),sp=num(x,SP),ss=isNaN(sa)||isNaN(sp)?"neutral":status(sa,sp,"sales"),hr=num(x,HR),hn=num(x,HN);
   return `<div class="card"><div class="lbl">${totDay===today?"Today so far":"Day total · "+esc(fmtDay(totDay))}${chipIf(s,isNaN(cd)?WORD[s]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(oe)}</div><div class="meta">OEPE${isNaN(lw)?"":" · last week "+mmss(lw)}</div>
@@ -270,12 +278,17 @@ async function comments(){let rows=[],live=false,src="";try{const r=await ShiftD
  const brief=isNaN(bc)?"":` Brief reports ${bc} new comment${bc===1?"":"s"}.`;
  if(src==="unsupported")return `<div class="sec">Comments</div><div class="card stack" role="status"><div class="lbl">Comments need the Apps Script update${chip("warn","Not shared yet")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script doesn't serve the Comments tab yet.${brief} Ask your GM to redeploy the latest Shift Hub Apps Script.</div></div>`;
  if(live)rows=rows.filter(x=>String(x.row_type||"").toUpperCase()==="DATA").map(x=>Object.assign({},x,{date:isoD(x.date)}));
- if(live&&!rows.length)return `<div class="sec">Comments</div><div class="card stack" role="status"><div class="lbl">No comments in the Sheet yet${isNaN(bc)?"":chip("neutral","Brief: "+bc+" new")}</div><div class="meta" style="-webkit-line-clamp:6">The Comments tab has no DATA rows yet.${brief}</div></div>`;
+ if(live&&!rows.length&&!(bc>0))return `<div class="sec">Comments</div><div class="card stack" role="status"><div class="lbl">No comments in the Sheet yet${isNaN(bc)?"":chip("neutral","Brief: "+bc+" new")}</div><div class="meta" style="-webkit-line-clamp:6">The Comments tab has no DATA rows yet.${brief}</div></div>`;
  if(!live&&rows.length){// sample: shift EXAMPLE dates so the newest is today
   const mx=rows.map(x=>x.date).sort().pop(),b=new Date(mx+"T12:00:00"),t=new Date();t.setHours(12,0,0,0);
   rows=rows.map(x=>{const d=new Date(x.date+"T12:00:00"),o=new Date(t);o.setDate(o.getDate()+Math.round((d-b)/864e5));return Object.assign({},x,{date:ymd(o)})})}
  const since=new Date();since.setDate(since.getDate()-cmtDays+1);const cut=ymd(since);
- const inRange=rows.filter(x=>String(x.date)>=cut).sort((a,b)=>String(b.date).localeCompare(a.date));
+ let inRange=rows.filter(x=>String(x.date)>=cut).sort((a,b)=>String(b.date).localeCompare(a.date));
+ let fromSmg=false;
+ if(live&&!inRange.length){try{const sm=await ShiftData.load("SMG");const rowsSm=(sm.rows||[]).filter(x=>!/^(header|example|note)$/i.test(String(x.row_type||"")));
+  const overall=rowsSm.find(x=>/overall/i.test(String(x.channel||"")))||rowsSm[0]||{};
+  const blurbs=ShiftPresent.smgBlurbs(overall.coaching_focus||"",ymd(new Date()),cmtDays);
+  if(blurbs.length){inRange=blurbs;fromSmg=true}}catch(e){}}
  const sen=x=>String(x.sentiment).toLowerCase();const list=cmtF==="all"?inRange:inRange.filter(x=>sen(x)===cmtF);
  const neg=inRange.filter(x=>sen(x)==="negative").length;
  const sc=x=>{const v=n(x.score);return chip(v>=4?"good":v>=3?"warn":"bad",(isNaN(v)?"—":v)+"/5")};
@@ -283,8 +296,9 @@ async function comments(){let rows=[],live=false,src="";try{const r=await ShiftD
  const day=s=>{const d=new Date(s+"T12:00:00");return isNaN(d)?esc(s):d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})};
  return `<div class="sec">Comments</div>${ctl}<div class="card stack"><div class="lbl">Last ${cmtDays} days${cmtF==="all"?chip("neutral","All: "+inRange.length):cmtF==="negative"?chip(neg?"warn":"good","Negative: "+neg):chip("good","Positive: "+list.length)}</div>
  <p class="meta" style="margin:0">Low scores (1–2): ${inRange.filter(x=>n(x.score)<=2).length} · Negative: ${neg} · Positive: ${inRange.filter(x=>sen(x)==="positive").length}${isNaN(bc)?"":" · Brief: "+bc+" new"}</p>
+ ${fromSmg?`<p class="meta" style="margin:0">From the SMG pull. The Comments tab has no rows in this range.</p>`:""}
  ${seg("cmtf",[["all","All"],["negative","Negative"],["positive","Positive"]],cmtF)}${seg("cmtd",[[7,"7 days"],[14,"14 days"]],cmtDays)}
- ${list.length?`<div class="list">${list.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="note-ts" style="margin:0;flex:1">${day(x.date)}</span>${sc(x)}${chip(sen(x)==="negative"?"bad":sen(x)==="positive"?"good":"neutral",sen(x)?sen(x)[0].toUpperCase()+sen(x).slice(1):"—")}</div><div style="margin-top:4px">${esc(scrub(x.comment))}</div></div>`).join("")}</div>`:empty(cmtF==="all"?"No comments in this range":"No "+cmtF+" comments in this range")}</div>`}
+ ${list.length?`<div class="list">${list.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="note-ts" style="margin:0;flex:1">${day(x.date)}${x.time?" · "+esc(x.time):""}</span>${sc(x)}${chip(sen(x)==="negative"?"bad":sen(x)==="positive"?"good":"neutral",sen(x)?sen(x)[0].toUpperCase()+sen(x).slice(1):"—")}</div><div style="margin-top:4px">${esc(scrub(x.comment))}</div></div>`).join("")}</div>`:empty(cmtF==="all"?(isNaN(bc)||!bc?"No comments in this range":"No comments dated in the last "+cmtDays+" days. Brief counts "+bc+" new, and the Comments tab has none in this range."):"No "+cmtF+" comments in this range")}</div>`}
 // ---- Who's on (Roster) ----
 const SHIFTS=[["6a-2p","6 AM – 2 PM"],["2p-10p","2 PM – 10 PM"],["10p-6a","10 PM – 6 AM"]];
 const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -497,15 +511,10 @@ function since_(v){const s=String(v||"").trim();if(!s)return{t:"",ms:null,when:"
  if(hm){d=new Date();d.setHours(+hm[1],+hm[2],0,0)}else if(/^\d{4}-\d\d-\d\d$/.test(s)){d=new Date(s+"T00:00:00");dOnly=true}else d=new Date(s);
  if(isNaN(d))return{t:"",ms:null,when:s};const mi=Math.max(0,Math.round((Date.now()-d)/6e4));
  return{t:dOnly?(mi<1440?"today":Math.floor(mi/1440)+" d"):mi<60?mi+" min":mi<2880?Math.round(mi/60)+" h":Math.round(mi/1440)+" d",ms:d.getTime(),when:dOnly?fmtDay(s):d.toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}}
-const RUSHES=["breakfast","lunch","dinner","event"];
 const isDone=x=>/^(y|yes|true|1|x|done)$/i.test(String(x.done||"").trim());
-const cbM=x=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(x.check_by||"").trim());return m?+m[1]*60+ +m[2]:null};
-function preGroups(rows){const g={};rows.forEach(x=>{const k=String(x.rush||"").trim().toLowerCase()||"other";(g[k]=g[k]||[]).push(x)});
- const ix=k=>{const i=RUSHES.indexOf(k);return i<0?9:i};
- return Object.keys(g).sort((a,b)=>ix(a)-ix(b)||a.localeCompare(b)).map(k=>{const it=g[k].slice().sort((a,b)=>(cbM(a)??9999)-(cbM(b)??9999));const ts=it.map(cbM).filter(v=>v!=null);
-  return{k,it,first:ts.length?Math.min(...ts):null,last:ts.length?Math.max(...ts):null,done:it.filter(isDone).length}})}
-// Current/next daily rush: the first breakfast/lunch/dinner group whose last check-by time is less than 30 min ago.
-function preNext(G){const d=new Date(),m=d.getHours()*60+d.getMinutes();return G.filter(g=>g.k!=="event"&&g.last!=null).find(g=>g.last+30>=m)||null}
+function preGroups(rows){return ShiftPresent.preGroups(rows)}
+// Soonest check that applies today and isn't more than 30 min past. PM times stay PM, so a 6:30 PM dinner is not "already passed" at breakfast.
+function preNext(G){const d=new Date();return ShiftPresent.preNext(G,d.getHours()*60+d.getMinutes(),ymd(d))}
 const capW=k=>k?k[0].toUpperCase()+k.slice(1):k;
 function otRows(rows){const r=(rows||[]).filter(isDR).filter(x=>String(x.first_name||"").trim());const ws=r.map(x=>String(x.week_start||"").slice(0,10)).filter(Boolean).sort().pop();
  const h=v=>{const x=n(v);return isNaN(x)?-1e9:x};return r.filter(x=>!ws||!x.week_start||String(x.week_start).slice(0,10)===ws).sort((a,b)=>h(b.over_by)-h(a.over_by)||h(b.projected_hours)-h(a.projected_hours))}
@@ -642,7 +651,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
 let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
-const APPVER="v41";
+const APPVER="v42";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -738,7 +747,7 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  if(a==="findcover"){FND={what:v("fwhat")||"",date:v("fdate")||"",start:v("fs")||"",end:v("fe")||"",ran:true};show("cover",{force:1});return}
  if(a==="cover"){COV={sel:v("cvsel")||"manual",role:v("cvrole")||"",station:v("cvst")||"",min:v("cvmin")||"1",date:v("cvdate")||"",start:v("cvs")||"",end:v("cve")||"",ran:true};show("cover",{force:1});return}
  if(a==="key"){if(!v("k")){$("#k").focus();return}ShiftData.Key.set(v("k"));meta=null;KEYJUST=true;for(const k in VIEW)delete VIEW[k];await show("settings",{fresh:1});KEYJUST=false;return}
- if(a==="ping"){const o=$("#pingres");o.textContent="Checking…";try{const r=await ShiftData.ping();o.textContent=r.ok?"Script OK · compatible (script "+(r.version||"?")+")":"Script problem: "+r.error}catch(e){o.textContent="Couldn't reach the script ("+e.message+")"}return}
+ if(a==="ping"){const o=$("#pingres");o.textContent="Checking…";try{const r=await ShiftData.ping();o.textContent=r.ok?"Script OK · compatible (script "+(r.version||"?")+")":"Script problem: "+r.error;const el=document.getElementById("lastchk");if(el)el.textContent=chkTxt()}catch(e){o.textContent="Couldn't reach the script ("+e.message+")"}return}
  if(a==="clearkey"){ShiftData.Key.set("");meta=null;for(const k in VIEW)delete VIEW[k];show("settings");return}
  if(a==="pos"&&v("pp")){const w=shiftNow();await F.add("positions",{date:w.date,shift:w.shift,position:v("pp"),name:first(v("pn"))})}
  else if(t.dataset.place){openSheet(t.dataset.place,t.dataset.pos);return}
@@ -776,7 +785,7 @@ let LASTPULL=Date.now();const pull=(why)=>{if(document.hidden||!ShiftData.Key.ge
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull("visible")});window.addEventListener("focus",()=>pull("focus"));window.addEventListener("pageshow",e=>{if(e.persisted)pull("pageshow")});window.addEventListener("online",()=>pull("online"));
 setInterval(()=>{LASTPULL=0;pull("3-min timer")},180000);
 // v37: Settings "Last checked" (any live refetch completing, even with no data change).
-window.addEventListener("shifthub:checked",()=>{CHK={at:ShiftData.status.checkedAt,why:TRIG};const el=document.getElementById("lastchk");if(el)el.textContent=chkTxt()});
+window.addEventListener("shifthub:checked",e=>{CHK={at:ShiftData.status.checkedAt,why:(e.detail&&e.detail.why)||TRIG};const el=document.getElementById("lastchk");if(el)el.textContent=chkTxt()});
 window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot"].includes(cur))show(cur)});
 app.addEventListener("input",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
 app.addEventListener("change",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const m=tmin(e.target.value);if(!isNaN(m))e.target.value=ampm(m)}if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});
