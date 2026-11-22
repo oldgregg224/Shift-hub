@@ -30,10 +30,10 @@ let meta=null,metaAt=0,metaPend=false;
 const fmtT=d=>d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
 const STALE=90*60000;
 // Per-tab freshness: Events weekly (Mon), SMG/Comments every 4h (4.5h), Roster/Coverage at 6a/2p/10p (8.5h); Brief/Labor/Speed 90 min.
-const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:25*36e5,Roster:8.5*36e5,Coverage:7*864e5,Crew:8.5*36e5,Skills:8.5*36e5,DaysOff:8.5*36e5,WeekHours:8.5*36e5,Availability:8.5*36e5,SchoolCal:8*864e5};// v39: Brief/Labor/Speed sync hourly 6-9 AM, 11 AM-2 PM, 5-8 PM ET (longest daytime gap ~3h, no runs 8 PM-6 AM).
+const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:25*36e5,Roster:8.5*36e5,Coverage:7*864e5,Crew:8.5*36e5,Skills:8.5*36e5,DaysOff:8.5*36e5,WeekHours:8.5*36e5,Availability:8.5*36e5,SchoolCal:8*864e5,PreRush:8.5*36e5,OTRisk:8.5*36e5};// v39: Brief/Labor/Speed sync hourly 6-9 AM, 11 AM-2 PM, 5-8 PM ET (longest daytime gap ~3h, no runs 8 PM-6 AM).
 // Daytime (6:30 AM-8:30 PM ET): stale if older than 3.5h. Overnight (8:30 PM-6:30 AM ET): stale only if older than
 // the evening's 7 PM ET run window (7 PM today if after 8:30 PM, else 7 PM yesterday). Uses the phone clock, in ET.
-const SCHED=new Set(["Brief","Labor","Speed"]);
+const SCHED=new Set(["Brief","Labor","Speed","OutOfStock"]); // v41: OutOfStock is rewritten every rush-hours sync, same schedule
 function etMin(){try{const p=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"numeric",hourCycle:"h23"}).formatToParts(new Date());
  const g=k=>+(p.find(x=>x.type===k)||{}).value;const m=g("hour")*60+g("minute");return isNaN(m)?null:m}catch(e){return null}}
 function schedMs(){const m=etMin();if(m==null)return 10.5*36e5; // fallback: flat 10.5h
@@ -143,20 +143,21 @@ async function whoHome(){try{const {rows}=await Promise.race([roster(),new Promi
 const within=(p,ms,fb)=>new Promise(res=>{let d=0;const t=setTimeout(()=>{if(!d){d=1;res(typeof fb==="function"?fb():fb)}},ms);p.then(v=>{clearTimeout(t);if(!d){d=1;res(v)}},e=>{clearTimeout(t);if(!d){d=1;res(typeof fb==="function"?fb():fb)}})});
 let FLATE={};
 const S={
-async home(){const r=await get("Brief"),b=r[0]||{};
+async home(){const r=await get("Brief"),b=r[0]||{};const EX=homeExtras();
  const sa=n(b.sales_actual),sp=n(b.sales_projection),la=n(b.labor_actual_pct),lp=n(b.labor_projection_pct);
  const ss=isNaN(sp)?"neutral":status(sa,sp,"sales"),ls=isNaN(lp)?"neutral":status(la,lp,"labor");
  const na=v=>/^\s*n\/?a\b/i.test(String(v??"").replace(/^EXAMPLE:\s*/i,""));const odNA=na(b.overdue_checklists);
- const ot=listCount(b.overtime_watch_first_names),od=listCount(b.overdue_checklists),cm=n(b.new_smg_comment_count)||0,hr=n(b.open_harri_requests)||0;
+ const X=await EX,otr=X.ot,otN=otr.length?otr.map(x=>crewNm(x.first_name)).join(", "):b.overtime_watch_first_names;
+ const ot=otr.length?otr.length:listCount(b.overtime_watch_first_names),od=listCount(b.overdue_checklists),cm=n(b.new_smg_comment_count)||0,hr=n(b.open_harri_requests)||0;
  const rush=b.rush_banner?`<div class="alert">${I("siren")}<div><b>${esc(b.rush_banner)}</b><span>Rush today</span></div></div>`:"";
  return keyAlert()+rush+
  kpi("Sales",money(sa),isNaN(sp)?"":"of "+money(sp)+" projected",ss,(isNaN(sa-sp)?"":(sa-sp<0?"−":"+")+money(Math.abs(sa-sp))+" · ")+({good:"Ahead",warn:"Behind",bad:"Behind"}[ss]||""),null)+
  kpi("Labor",pct(la),isNaN(lp)?"":"target "+pct(lp),ls,(isNaN(la-lp)?"":sgn(la-lp,1)+" · ")+({good:"On target",warn:"Watch",bad:"Over"}[ls]||""),"labor")+
  `<div class="grid">`+
- kpi("Overtime",ot,ot?b.overtime_watch_first_names:"No one close",status(ot,0,"count"),ot?"Watch":"Clear","floor",1)+
+ kpi("Overtime",ot,ot?otN:"No one close",status(ot,0,"count"),ot?"Watch":"Clear","ot",1)+
  (odNA?"":kpi("Overdue",od,od?b.overdue_checklists:"All checklists done",od?"bad":"good",od?"Late":"Clear","floor",1))+
  kpi("Guest notes",cm,"new comments",null,null,"guest",1)+
- kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+await whoHome()},
+ kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+preHome(X.pre)+oosHome(X.oos)+await whoHome()},
 
 async labor(){const r=await get("Labor");
  const LP=["labor_pct","labor_percent","labor_pct_actual","actual_labor_pct","actual_pct","crew_labor_pct","labor"],TP=["target_pct","labor_target_pct","target","goal_pct","labor_goal_pct","projected_labor_pct","labor_projection_pct"],
@@ -189,20 +190,38 @@ async rushes(){const r=await get("Events");const d0=new Date(),today=`${d0.getFu
  <div class="det" style="padding-left:0">${x.prep_notes?`<div><b>Prep:</b> ${esc(x.prep_notes)}</div>`:""}${x.runner_timing?`<div><b>Runner:</b> ${esc(x.runner_timing)}</div>`:""}${src(x)}</div></details>`).join("")}</div>`:empty("Nothing coming up"))},
 
 async speed(){const r=await get("Speed");
+ // v41: cut down to need-to-know: day total (hour=ALL row), the latest hour, today's notes, and only the hours that are off.
  const OE=["oepe_sec","oepe","oepe_seconds","avg_oepe_sec","oepe_avg_sec"],LW=["last_week_oepe_sec","lw_oepe_sec","last_week_oepe","oepe_last_week_sec"],TT=["total_time_sec","total_sec","total_time","avg_total_sec"],LT=["last_week_total_sec","lw_total_sec"],
- OS=["order_sec","order_time_sec"],CS=["cash_sec","cash_time_sec"],WS=["second_window_sec","present_sec","window_sec","2nd_window_sec"];
- const has=x=>!isNaN(num(x,OE))||!isNaN(num(x,TT));const hasAny=x=>has(x)||!isNaN(num(x,LW));
- const {hours,total}=hourly(r,hasAny);if(!hours.length&&!total)return keyAlert()+empty("No speed data yet");
+ SA=["sales","net_sales","sales_actual","actual_sales"],SP=["sales_proj","sales_projection","projected_sales","sales_projected","proj_sales"],HR=["hours","labor_hours","actual_hours","crew_hours"],HN=["hours_need","hours_needed","need_hours","needed_hours"],NT=["pre_rush_positioning_note","positioning_note","note","notes"];
+ const has=x=>!isNaN(num(x,OE))||!isNaN(num(x,TT));const hasAny=x=>has(x)||!isNaN(num(x,LW))||!isNaN(num(x,SA));
+ const {hours,total}=hourly(r,hasAny);const today=ymd(new Date()),dOf=x=>String(fld(x,["date","business_date","day"])||"").slice(0,10);
+ const note=x=>String(fld(x,["pre_rush_positioning_note","positioning_note"])||"").trim();
+ const tips=[...new Set(r.filter(x=>!/^(header|example)$/i.test(String(x.row_type||""))&&dOf(x)===today).map(note).filter(Boolean))];
+ if(!hours.length&&!total)return keyAlert()+tips.map(t=>`<div class="tip">${I("lightbulb")}<span>${esc(t)}</span></div>`).join("")+empty("No speed data yet");
  const st=x=>String(fld(x,["slow_flag","slow"])).toUpperCase()==="Y"&&has(x)?"bad":isNaN(num(x,LW))?"neutral":status(num(x,OE),num(x,LW),"oepe");
- const N=pickNow(hours,has);const tips=r.filter(x=>fld(x,["pre_rush_positioning_note","positioning_note"]));
- const lwOnly=!hours.some(o=>has(o.x));
- const head=N?(()=>{const x=N.o.x,cd=num(x,OE)-num(x,LW),s=st(x);return `<div class="card"><div class="lbl">${N.lbl}${chipIf(s,isNaN(cd)?WORD[s]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(num(x,OE))}</div><div class="meta">OEPE${isNaN(num(x,LW))?"":" · last week "+mmss(num(x,LW))}</div></div>`})()
-  :`<div class="card"><div class="lbl">No times yet today</div><div class="meta">${lwOnly?"Showing last week's times by hour below.":"Waiting for the next sync."}</div></div>`;
- return keyAlert()+head+tips.map(x=>`<div class="tip">${I("lightbulb")}<span>${esc(fld(x,["pre_rush_positioning_note","positioning_note"]))}</span></div>`).join("")+
- `<div class="sec">OEPE by hour</div><div class="list">${hours.map(({h,x})=>{const oe=num(x,OE),lw=num(x,LW),d=oe-lw,s=st(x),o=num(x,OS)||0,c=num(x,CS)||0,w=num(x,WS)||0;
- const tag=(isNaN(d)?"":sgn(d)+"s ")+(s==="bad"?"Slow":s==="warn"?"Watch":"");
- return `<details><summary class="row"><span class="t">${hs(h)}</span><span class="v">${mmss(oe)}<small>${[isNaN(lw)?"":"LW "+mmss(lw),isNaN(num(x,TT))?"":"total "+mmss(num(x,TT))].filter(Boolean).join(" · ")}</small></span>${tag.trim()?chip(s,tag):""}${I("chevron-down","cv")}</summary>
- <div class="det">${isNaN(num(x,TT))&&isNaN(num(x,LT))?"":`<div><b>Total:</b> ${mmss(num(x,TT))}${isNaN(num(x,LT))?"":" (LW "+mmss(num(x,LT))+")"}</div>`}${o+c+w?`<div class="bar"><i style="flex:${o};background:var(--accent)"></i><i style="flex:${c};background:var(--ink-3)"></i><i style="flex:${w};background:var(--warn)"></i></div><div>Order ${o}s · Cash ${c}s · 2nd window ${w}s</div>`:""}</div></details>`}).join("")}</div>`},
+ const h2=v=>+(+v).toFixed(2);
+ // Why an hour (or the day) is off: slow flag, OEPE worse than last week, sales behind projection, hours over need.
+ const offs=x=>{const o=[],oe=num(x,OE),lw=num(x,LW),sa=num(x,SA),sp=num(x,SP),hr=num(x,HR),hn=num(x,HN);
+  if(String(fld(x,["slow_flag","slow"])).toUpperCase()==="Y")o.push(["bad","Slow"]);
+  else if(!isNaN(oe)&&!isNaN(lw)&&oe>lw)o.push([status(oe,lw,"oepe"),"+"+Math.round(oe-lw)+"s vs LW"]);
+  if(!isNaN(sa)&&!isNaN(sp)&&sa<sp)o.push([status(sa,sp,"sales"),"Sales −"+money(sp-sa)]);
+  if(!isNaN(hr)&&!isNaN(hn)&&hr>hn)o.push(["warn","+"+h2(hr-hn)+" hrs"]);return o};
+ const line=x=>{const sa=num(x,SA),sp=num(x,SP),hr=num(x,HR),hn=num(x,HN);return [isNaN(sa)?"":"Sales "+money(sa)+(isNaN(sp)?"":" of "+money(sp)),isNaN(hr)?"":"Hours "+h2(hr)+(isNaN(hn)?"":" vs need "+h2(hn))].filter(Boolean)};
+ const N=pickNow(hours,has);const lwOnly=!hours.some(o=>has(o.x));
+ const tot=total,totDay=tot?(dOf(tot)||today):""; // hourly() already keeps the total for the latest date with data
+ const dayCard=tot?(()=>{const x=tot,oe=num(x,OE),lw=num(x,LW),cd=oe-lw,s=isNaN(lw)?"neutral":status(oe,lw,"oepe"),sa=num(x,SA),sp=num(x,SP),ss=isNaN(sa)||isNaN(sp)?"neutral":status(sa,sp,"sales"),hr=num(x,HR),hn=num(x,HN);
+  return `<div class="card"><div class="lbl">${totDay===today?"Today so far":"Day total · "+esc(fmtDay(totDay))}${chipIf(s,isNaN(cd)?WORD[s]:sgn(cd)+"s vs LW")}</div><div class="hero">${mmss(oe)}</div><div class="meta">OEPE${isNaN(lw)?"":" · last week "+mmss(lw)}</div>
+  ${isNaN(sa)?"":`<div class="meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">Sales ${money(sa)}${isNaN(sp)?"":" of "+money(sp)+" projected"} ${chipIf(ss,isNaN(sp)?"":(sa-sp<0?"−":"+")+money(Math.abs(sa-sp)))}</div>`}
+  ${isNaN(hr)?"":`<div class="meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">Hours ${h2(hr)}${isNaN(hn)?"":" vs need "+h2(hn)} ${!isNaN(hn)&&hr>hn?chip("warn","+"+h2(hr-hn)+" hrs"):""}</div>`}</div>`})():"";
+ const head=N?(()=>{const x=N.o.x,cd=num(x,OE)-num(x,LW),s=st(x),ln=line(x);return `<div class="card"><div class="lbl">${N.lbl}${chipIf(s,isNaN(cd)?WORD[s]:sgn(cd)+"s vs LW")}</div><div class="hero sm">${mmss(num(x,OE))}</div><div class="meta">OEPE${isNaN(num(x,LW))?"":" · last week "+mmss(num(x,LW))}${ln.length?" · "+esc(ln.join(" · ")):""}</div></div>`})()
+  :`<div class="card"><div class="lbl">No times yet today</div><div class="meta">${lwOnly?"Last week's times only so far.":"Waiting for the next sync."}</div></div>`;
+ const off=hours.filter(({x})=>has(x)||!isNaN(num(x,SA))).map(o=>({...o,why:offs(o.x),nt:note(o.x)})).filter(o=>o.why.length||o.nt);
+ const withData=hours.filter(({x})=>has(x)).length;
+ const list=off.length?`<div class="sec">Hours to look at (${off.length})</div><div class="list">${off.map(({h,x,why,nt})=>{const oe=num(x,OE),lw=num(x,LW);
+  return `<details><summary class="row"><span class="t">${hs(h)}</span><span class="v">${mmss(oe)}<small>${esc([isNaN(lw)?"":"LW "+mmss(lw)].concat(line(x)).filter(Boolean).join(" · "))}</small></span>${why.length?chip(why[0][0]==="neutral"?"warn":why[0][0],why.map(w=>w[1]).join(" · ")):""}${I("chevron-down","cv")}</summary>
+  <div class="det">${why.length?`<div><b>Off:</b> ${esc(why.map(w=>w[1]).join(" · "))}</div>`:""}${nt?`<div><b>Note:</b> ${esc(nt)}</div>`:""}${isNaN(num(x,TT))?"":`<div><b>Total:</b> ${mmss(num(x,TT))}${isNaN(num(x,LT))?"":" (LW "+mmss(num(x,LT))+")"}</div>`}</div></details>`}).join("")}</div>`
+  :(withData?`<div class="tip">${I("check")}<span>All ${withData} hour${withData===1?"":"s"} on pace: no slow hours, sales and hours on track.</span></div>`:"");
+ return keyAlert()+dayCard+head+tips.map(t=>`<div class="tip">${I("lightbulb")}<span>${esc(t)}</span></div>`).join("")+list},
 
 async guest(){const r=await get("SMG"),cmt=await comments();if(!r.length)return keyAlert()+empty("No guest scores yet")+cmt;const f=r.find(x=>x.coaching_focus);
  const cm=r.filter(x=>x.low_score_comment_names_removed);
@@ -455,21 +474,96 @@ S.cover=async()=>{const SF=window.ShiftFinder;const ld=t=>ShiftData.load(t).catc
  try{const R=await within(rp,1500,()=>({rows:[]}));const iv=span(dt,hhmm(a),hhmm(b));if(iv){const rs=(R.rows||[]).map(r=>({sp:span(r.date,r.start,r.end),pn:pname(r.first_name),r})).filter(x=>x.sp&&x.sp[0]<iv[1]&&iv[0]<x.sp[1]);
   res.ok=res.ok.filter(o=>{const pn=pname(o.name),h=rs.find(x=>x.pn.f===pn.f&&(!x.pn.i||!pn.i||x.pn.i===pn.i));if(h){o.why.push("already on "+clock(h.r.start,1)+"–"+clock(h.r.end,1));res.no.push(o);return false}return true});res.no.sort((x,y)=>x.name.localeCompare(y.name))}}catch(_){}
  const lbl=ty==="station"?tc(val):val;
- const sum=`<div class="card"><div class="lbl">${esc(lbl)} · ${esc(dt)} ${esc(ampm(a))}–${esc(ampm(b))}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:10">${ty==="station"?"Ranked by "+esc(lbl)+" level (verified skills first), then hours left. ":"Same role in Harri, ranked by hours left. "}Approved time off excludes; pending is a caution. Hours left = 40 (overtime) or the minor weekly cap minus this week's scheduled hours. Minors: Florida FS 450.081 (${res.schoolNight?"school night":"no school next day"}${res.calKnown?", per SchoolCal":", assumed: school Mon–Fri, Aug 10–May 31"}). Waivers and exemptions: manager decides.${res.hasAv?"":" Availability not in Harri — not checked."}</div></div>`;
+ const sum=`<div class="card"><div class="lbl">${esc(lbl)} · ${esc(dt)} ${esc(ampm(a))}–${esc(ampm(b))}${chip("neutral",h1(res.len)+" h")}</div><div class="meta" style="-webkit-line-clamp:10">${ty==="station"?"Ranked by "+esc(lbl)+" level (verified skills first), then hours left. ":"Same role in Harri, ranked by hours left. "}Approved time off excludes; pending is a caution. Hours left = 40 (overtime) or the minor weekly cap minus this week's worked hours (scheduled hours until worked hours are in the Sheet). Minors: Florida FS 450.081 (${res.schoolNight?"school night":"no school next day"}${res.calKnown?", per SchoolCal":", assumed: school Mon–Fri, Aug 10–May 31"}). Waivers and exemptions: manager decides.${res.hasAv?"":" Availability not in Harri — not checked."}</div></div>`;
  const card=o=>{const t=SF.telOf(o.phone),ch=[];
   if(o.lvl!==null&&ty==="station")ch.push(chip(o.verified?"good":"warn","Level "+o.lvl+(o.verified?"":" · unverified")));
   if(!o.band)ch.push(chip("warn","Age unknown — check"));else if(o.band!=="18+")ch.push(chip("neutral","Minor "+o.band));
   o.warn.filter(w=>!/^age unknown/.test(w)).forEach(w=>ch.push(chip("warn",w)));
   const av_=o.avail===null?"availability not in Harri":o.avail.length?"Harri availability: "+o.avail.map(r=>[r.day,r.start&&r.end?r.start+"–"+r.end:""].filter(Boolean).join(" ")).join(", "):"no availability rows";
   return `<div class="row" style="display:block;padding:10px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(o.name)}</b>${o.why.length?"":chip(o.after<0?"bad":o.after<4?"warn":"good",h1(Math.max(0,o.after))+" h left"+(o.cap!==40?" (minor cap "+o.cap+")":""))}</div>
-  <div class="meta" style="margin:2px 0 0">${esc(o.role||"")}${o.known?" · scheduled "+h1(o.wk)+" h this week":""}</div>
+  <div class="meta" style="margin:2px 0 0">${esc([o.role||"",o.known?SF.hoursTxt(o)+" this week":""].filter(Boolean).join(" · "))}</div>
   ${ch.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0">${ch.join("")}</div>`:""}
   ${o.why.length?`<div class="meta" style="margin:2px 0 0">Can't: ${o.why.map(esc).join(" · ")}</div>`:`<div class="meta" style="margin:2px 0 0"><small>${esc(av_)}</small></div>${t?`<a class="btn block" style="margin-top:6px" href="${esc(t.href)}">${I("phone")}Call ${esc(o.name.split(" ")[0])} · ${esc(t.label)}</a>`:""}`}</div>`};
  return head+syn+form+sum+`<div class="sec">Can cover (${res.ok.length})</div>`+(res.ok.length?`<div class="list">${res.ok.map(card).join("")}</div>`:empty("No one fits this shift"))+
   (res.no.length?`<details class="card"><summary class="row"><span class="v txt">Can't cover (${res.no.length})</span>${I("chevron-down","cv")}</summary><div class="list">${res.no.map(card).join("")}</div></details>`:"")};
 
+// ---- v41: Out of stock, Pre-rush checklist, Potential OT (OutOfStock / PreRush / OTRisk tabs). Read-only. ----
+const isDR=x=>!!x&&!/^(header|example|note)$/i.test(String(x.row_type||"").trim());
+// Crew names: first name + last initial (never a full last name).
+const crewNm=s=>{const p=String(s||"").trim().split(/\s+/).filter(Boolean);return p.length>1?p[0]+" "+p[p.length-1][0].toUpperCase():(p[0]||"")};
+const fmtDay=d=>{d=String(d||"").trim();if(!/^\d{4}-\d\d-\d\d/.test(d))return d;const x=new Date(d.slice(0,10)+"T12:00:00");return isNaN(x)?d:x.toLocaleDateString("en-US",{weekday:"short",month:"numeric",day:"numeric"})};
+// "since" -> {t:"3 h", ms, when:"Sun 7:00 AM"}. Accepts ISO, YYYY-MM-DD, or HH:MM (today).
+function since_(v){const s=String(v||"").trim();if(!s)return{t:"",ms:null,when:""};let d,dOnly=false;const hm=/^(\d{1,2}):(\d{2})$/.exec(s);
+ if(hm){d=new Date();d.setHours(+hm[1],+hm[2],0,0)}else if(/^\d{4}-\d\d-\d\d$/.test(s)){d=new Date(s+"T00:00:00");dOnly=true}else d=new Date(s);
+ if(isNaN(d))return{t:"",ms:null,when:s};const mi=Math.max(0,Math.round((Date.now()-d)/6e4));
+ return{t:dOnly?(mi<1440?"today":Math.floor(mi/1440)+" d"):mi<60?mi+" min":mi<2880?Math.round(mi/60)+" h":Math.round(mi/1440)+" d",ms:d.getTime(),when:dOnly?fmtDay(s):d.toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}}
+const RUSHES=["breakfast","lunch","dinner","event"];
+const isDone=x=>/^(y|yes|true|1|x|done)$/i.test(String(x.done||"").trim());
+const cbM=x=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(x.check_by||"").trim());return m?+m[1]*60+ +m[2]:null};
+function preGroups(rows){const g={};rows.forEach(x=>{const k=String(x.rush||"").trim().toLowerCase()||"other";(g[k]=g[k]||[]).push(x)});
+ const ix=k=>{const i=RUSHES.indexOf(k);return i<0?9:i};
+ return Object.keys(g).sort((a,b)=>ix(a)-ix(b)||a.localeCompare(b)).map(k=>{const it=g[k].slice().sort((a,b)=>(cbM(a)??9999)-(cbM(b)??9999));const ts=it.map(cbM).filter(v=>v!=null);
+  return{k,it,first:ts.length?Math.min(...ts):null,last:ts.length?Math.max(...ts):null,done:it.filter(isDone).length}})}
+// Current/next daily rush: the first breakfast/lunch/dinner group whose last check-by time is less than 30 min ago.
+function preNext(G){const d=new Date(),m=d.getHours()*60+d.getMinutes();return G.filter(g=>g.k!=="event"&&g.last!=null).find(g=>g.last+30>=m)||null}
+const capW=k=>k?k[0].toUpperCase()+k.slice(1):k;
+function otRows(rows){const r=(rows||[]).filter(isDR).filter(x=>String(x.first_name||"").trim());const ws=r.map(x=>String(x.week_start||"").slice(0,10)).filter(Boolean).sort().pop();
+ const h=v=>{const x=n(v);return isNaN(x)?-1e9:x};return r.filter(x=>!ws||!x.week_start||String(x.week_start).slice(0,10)===ws).sort((a,b)=>h(b.over_by)-h(a.over_by)||h(b.projected_hours)-h(a.projected_hours))}
+// Home extras: never hold Home up more than 2.5 s; redraw once when late rows land.
+let XLATE=0;
+async function homeExtras(){const ld=t=>ShiftData.load(t).catch(()=>({rows:[],src:"error"}));const ps={oos:ld("OutOfStock"),ot:ld("OTRisk"),pre:ld("PreRush")};
+ const ks=Object.keys(ps),vs=await Promise.all(ks.map(k=>within(ps[k],2500,null)));const out={};let late=false;
+ ks.forEach((k,i)=>{const v=vs[i];if(!v)late=true;const rows=v?(v.rows||[]).filter(isDR):[];out[k]=k==="ot"?otRows(rows):k==="oos"?rows.filter(x=>String(x.item||"").trim()):rows.filter(x=>String(x.item||"").trim())});
+ if(late)Promise.allSettled(ks.map(k=>ps[k])).then(()=>{if(cur==="home"&&!$("#sheet")&&!editing()&&Date.now()-XLATE>20000){XLATE=Date.now();show("home")}});
+ return out}
+function oosHome(rows){if(!rows||!rows.length)return "";const it=rows.map(x=>({x,s:since_(x.since)})).sort((a,b)=>(a.s.ms??Infinity)-(b.s.ms??Infinity));
+ const nm=it.slice(0,3).map(o=>o.x.item).join(", ")+(it.length>3?" +"+(it.length-3)+" more":"");
+ return `<button class="card tool" type="button" data-go="outofstock">${I("package")}<span><b>Out of stock · ${it.length}</b><span class="meta">${esc(nm)}</span></span>${I("chevron-right","cv")}</button>`}
+function preHome(rows){if(!rows||!rows.length)return "";const G=preGroups(rows),nx=preNext(G);
+ const t=nx?"Pre-rush · "+capW(nx.k):"Pre-rush checklist",m=nx?[nx.first!=null?"check by "+clock(hhmm(nx.first)):"",nx.done+" of "+nx.it.length+" done"].filter(Boolean).join(" · "):rows.length+" items · "+G.map(g=>capW(g.k)).join(", ");
+ return `<button class="card tool" type="button" data-go="prerush">${I("timer")}<span><b>${esc(t)}</b><span class="meta">${esc(m)}</span></span>${I("chevron-right","cv")}</button>`}
+// Screens reached from Home or Tools go back where they came from.
+let FROM="home";
+const backBtn=()=>{const to=FROM==="tools"?"tools":"home";return `<button class="btn" data-go="${to}" style="align-self:flex-start">${I("chevron-left")}${to==="tools"?"Tools":"Home"}</button>`};
+// Load one new tab for its own screen; an older deployed script answers "bad tab" -> short pending-redeploy note.
+async function loadT(tab){const r=await ShiftData.load(tab).catch(e=>({rows:[],live:false,src:"error",err:e.message}));
+ if(r.src==="unsupported"){const t="Waiting for the Apps Script update";CUR={src:"live",stale:false,tab};const u=$("#upd");u.textContent=t;u.classList.add("stale");TABST[cur]={c:Object.assign({},CUR),upd:t,cls:true};setSrc(true,"live");return r}
+ if(r.src!=="error"){await setUpd(tab,r.rows,r.live,r);setSrc(r.live,r.src)}return r}
+const pendCard=(lbl,tab)=>`<div class="card stack" role="status"><div class="lbl">${esc(lbl)} needs the Apps Script update${chip("warn","Pending")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script is an older version that doesn't serve the ${esc(tab)} tab yet. Ask your GM to redeploy the latest Shift Hub Apps Script (v28). Everything else is live.</div></div>`;
+S.outofstock=async()=>{const r=await loadT("OutOfStock");const hd=backBtn()+`<div class="tip">${I("lock")}<span>Read-only · QSRSoft out-of-stock list via the Sheet</span></div>`;
+ if(r.src==="unsupported")return hd+pendCard("Out of stock","OutOfStock");
+ const rows=(r.rows||[]).filter(isDR).filter(x=>String(x.item||"").trim());
+ if(!rows.length)return keyAlert()+hd+empty(r.src==="error"?"Couldn't load the out-of-stock list":"Nothing out of stock right now");
+ const g={};rows.forEach(x=>{const k=String(x.category||"").trim()||"Other";(g[k]=g[k]||[]).push(x)});
+ const cats=Object.keys(g).sort((a,b)=>a==="Other"?1:b==="Other"?-1:a.localeCompare(b));
+ return keyAlert()+hd+`<div class="card"><div class="lbl">Out of stock${chip("bad",rows.length+" item"+(rows.length===1?"":"s"))}</div><div class="meta">${cats.length} categor${cats.length===1?"y":"ies"} · longest out first</div></div>`+
+  cats.map(c=>{const it=g[c].map(x=>({x,s:since_(x.since)})).sort((a,b)=>(a.s.ms??Infinity)-(b.s.ms??Infinity));
+   return `<div class="sec">${esc(c)} (${it.length})</div><div class="list">${it.map(({x,s})=>`<div class="row" style="cursor:default"><span class="v txt">${esc(x.item)}${s.when?`<small>out since ${esc(s.when)}</small>`:""}</span>${s.t?chip(s.ms!=null&&Date.now()-s.ms>864e5?"bad":"warn",s.t):""}</div>`).join("")}</div>`}).join("")};
+S.prerush=async()=>{const r=await loadT("PreRush");const hd=backBtn()+`<div class="tip">${I("lock")}<span>Read-only · from the Sheet · separate from Floor's checklist</span></div>`;
+ if(r.src==="unsupported")return hd+pendCard("Pre-rush checklist","PreRush");
+ const rows=(r.rows||[]).filter(isDR).filter(x=>String(x.item||"").trim());
+ if(!rows.length)return keyAlert()+hd+empty(r.src==="error"?"Couldn't load the pre-rush checklist":"No pre-rush checklist in the Sheet yet");
+ const G=preGroups(rows),nx=preNext(G);
+ return keyAlert()+hd+G.map(g=>`<div class="sec">${esc(capW(g.k))}${g.first!=null?" · by "+clock(hhmm(g.first),1):""} · ${g.done}/${g.it.length} done${nx&&nx.k===g.k?" · next up":""}</div><div class="list">${g.it.map(x=>{const tr=String(x.trigger||"").trim(),dn=isDone(x),sub=[x.why,tr&&!/^daily$/i.test(tr)?"for "+tr:""].filter(v=>String(v||"").trim()).join(" · ");
+  return `<div class="row" style="cursor:default;align-items:flex-start"><span class="t">${x.check_by?clock(x.check_by,1):"—"}</span><span class="v txt">${esc([x.station,x.item].filter(v=>String(v||"").trim()).join(" · "))}${sub?`<small style="white-space:normal">${esc(sub)}</small>`:""}</span>${dn?chip("good","Done"+(x.done_at?" "+clock(x.done_at,1):"")):""}</div>`}).join("")}</div>`).join("")};
+S.ot=async()=>{const r=await loadT("OTRisk");const hd=backBtn()+`<div class="tip">${I("lock")}<span>Suggestions only · read-only · make changes in Harri</span></div>`;
+ const brief=async()=>{const b=await within(ShiftData.load("Brief"),2500,null);const nm=b&&((b.rows||[])[0]||{}).overtime_watch_first_names;
+  return nm&&listCount(nm)?`<div class="card"><div class="lbl">Overtime watch (Brief)${chip("warn","Watch")}</div><div class="meta" style="-webkit-line-clamp:4">${esc(String(nm).replace(/^EXAMPLE:\s*/i,""))}</div><div class="meta">Hours, cut suggestions and fixes will show here once the OTRisk tab is filled.</div></div>`:empty("No one at risk of overtime this week")};
+ if(r.src==="unsupported")return hd+pendCard("Potential OT","OTRisk")+await brief();
+ const rows=otRows(r.rows);if(!rows.length)return keyAlert()+hd+(r.src==="error"?empty("Couldn't load the OT list"):await brief());
+ const h=v=>{const x=n(v);return isNaN(x)?null:+x.toFixed(2)};const ws=String(rows[0].week_start||"").slice(0,10);
+ const card=x=>{const ov=h(x.over_by),pj=h(x.projected_hours),wk=h(x.worked_hours),sc=h(x.scheduled_hours),ch=h(x.cut_hours);
+  const cut=[fmtDay(x.cut_date),String(x.cut_shift||"").trim(),ch!=null?ch+" h":""].filter(Boolean).join(" · ");
+  const fx=String(x.fixes||"").split(/\s*(?:;|\||\n)\s*/).map(s=>s.trim()).filter(Boolean);
+  return `<div class="card stack"><div class="lbl">${esc(crewNm(x.first_name))}${String(x.role||"").trim()?" · "+esc(x.role):""}${ov!=null&&ov>0?chip("bad","+"+ov+" h over 40"):pj!=null&&pj>=38?chip("warn","Close to 40"):""}</div>
+  <div class="hero sm">${pj!=null?pj+" h projected":sc!=null?sc+" h scheduled":"—"}</div>
+  <div class="meta" style="-webkit-line-clamp:3">${esc([wk!=null?"worked "+wk+" h":"",sc!=null?"scheduled "+sc+" h":"",ov!=null&&ov>0?"over by "+ov+" h":""].filter(Boolean).join(" · "))}</div>
+  ${cut||String(x.why||"").trim()?`<div class="det" style="padding:0">${cut?`<div><b>Suggested cut:</b> ${esc(cut)}</div>`:""}${String(x.why||"").trim()?`<div><b>Why:</b> ${esc(x.why)}</div>`:""}</div>`:""}
+  ${fx.length?`<div class="det" style="padding:0"><div><b>Possible fixes</b></div>${fx.map(f=>`<div>• ${esc(f)}</div>`).join("")}</div>`:""}</div>`};
+ return keyAlert()+hd+`<div class="card"><div class="lbl">Potential overtime${chip("warn",rows.length+" "+(rows.length===1?"person":"people"))}</div><div class="meta">${ws?"Week of "+esc(fmtDay(ws))+" · ":""}most over first</div></div>`+rows.map(card).join("")};
+
 // ---- Tools ----
-const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],["inventory","Inventory","package","Counts, low stock, order list"],["waste","Waste log","trash","Quick log, daily totals"],["equipment","Equipment","wrench","Issues and fixes"],["crewnotes","Crew notes","notebook","Training, praise, call-outs"],["cover","Who can cover?","users","Suggest crew for an open shift"]];
+const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],["inventory","Inventory","package","Counts, low stock, order list"],["waste","Waste log","trash","Quick log, daily totals"],["equipment","Equipment","wrench","Issues and fixes"],["crewnotes","Crew notes","notebook","Training, praise, call-outs"],["cover","Who can cover?","users","Suggest crew for an open shift"],["prerush","Pre-rush checklist","timer","What to check before each rush"],["outofstock","Out of stock","package","QSRSoft out-of-stock list"]];
 const back=`<button class="btn" data-go="tools" style="align-self:flex-start">${I("chevron-left")}Tools</button>`;
 const OLDK=k=>window.FloorCompat&&FloorCompat.needsUpdate(k)&&ShiftData.live();
 const oldCard=k=>OLDK(k)?`<div class="card stack" role="status"><div class="lbl">Tools need the Apps Script update${chip("warn","This phone only")}</div><div class="meta" style="-webkit-line-clamp:4">The shared Sheet script is an older version, so entries here are saved on this phone only for now. Ask your GM to redeploy the latest Shift Hub Apps Script.</div></div>`:"";
@@ -548,7 +642,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
 let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
-const APPVER="v40";
+const APPVER="v41";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -568,8 +662,8 @@ S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
  <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>
  <div class="ver" id="lastchk">${chkTxt()}</div><div class="ver" id="ver">Shift Hub ${APPVER}${await swCache()}</div>`};
 
-const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",cover:"Who can cover?",settings:"Settings"};
-const TABOF={cover:"whoson",floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools"};
+const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",cover:"Who can cover?",outofstock:"Out of stock",prerush:"Pre-rush",ot:"Potential OT",settings:"Settings"};
+const TABOF={ot:"home",outofstock:"tools",prerush:"tools",cover:"whoson",floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools"};
 // Position picker sheet (replaces prompt()).
 let POSOPTS=[];
 function closeSheet(){const s=$("#sheet");if(s)s.remove()}
@@ -594,7 +688,7 @@ const VIEW={};let seq=0,shown="",DEFER="";
 const editing=()=>{const a=document.activeElement;if(a&&app.contains(a)&&a.matches("input:not([type=checkbox]),textarea"))return true;
  return [...app.querySelectorAll("input:not([type=checkbox]):not([type=password]),textarea")].some(i=>i.value!==i.defaultValue)};
 app.addEventListener("focusout",()=>setTimeout(()=>{if(DEFER&&DEFER===cur&&!editing()){DEFER="";show(cur)}},150));
-const FOCUS={cover:["Roster","Coverage","Meta"],home:["Brief","Labor","Roster","Meta"],whoson:["Roster","Meta"],labor:["Labor","Brief","Meta"],rushes:["Events","Speed","Meta"],speed:["Speed","Meta"],guest:["SMG","Comments","Brief","Meta"],tools:["Brief","Meta"]};
+const FOCUS={cover:["Crew","Skills","DaysOff","WeekHours","Availability","SchoolCal","Roster","Meta"],home:["Brief","OutOfStock","OTRisk","PreRush","Roster","Meta"],outofstock:["OutOfStock","Meta"],prerush:["PreRush","Meta"],ot:["OTRisk","Brief","Meta"],whoson:["Roster","Meta"],labor:["Labor","Brief","Meta"],rushes:["Events","Speed","Meta"],speed:["Speed","Meta"],guest:["SMG","Comments","Brief","Meta"],tools:["Brief","Meta"]};
 const PV=new Set(["floor:positions","floor:breaks","floor:checklist","floor:fixes","floor:handoff","inventory","waste","equipment","crewnotes"]);
 const pvGet=vk=>{try{return PV.has(vk)?localStorage.getItem("shifthub_view_"+vk):null}catch(e){return null}};
 const pvSet=(vk,h)=>{if(!PV.has(vk))return;clearTimeout(pvSet[vk]);pvSet[vk]=setTimeout(()=>{try{localStorage.setItem("shifthub_view_"+vk,h)}catch(e){}},500)};
@@ -609,7 +703,7 @@ function paint(h){const a=document.activeElement,fid=a&&app.contains(a)&&a.id?a.
  app.querySelectorAll("details").forEach(d=>{const su=d.querySelector("summary");if(su&&open.has(su.textContent))d.open=true});
  for(const id in keep){const el=document.getElementById(id);if(el&&el.value===el.defaultValue)el.value=keep[id]}
  if(fid&&document.activeElement!==document.getElementById(fid)){const el=document.getElementById(fid);if(el){el.focus({preventScroll:true});if(ss)try{el.setSelectionRange(ss[0],ss[1])}catch(e){}}}}
-async function show(s,o={}){try{window.FloorSync&&window.FloorSync()}catch(e){}const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,moved=shown!==vk;cur=s;shown=vk;
+async function show(s,o={}){try{window.FloorSync&&window.FloorSync()}catch(e){}const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,moved=shown!==vk;if(s!==cur&&!["outofstock","prerush","ot","settings"].includes(cur))FROM=cur;cur=s;shown=vk;
  try{ShiftData.setFocus(s==="floor"?[floorSub,"Roster","Brief","Meta"]:FOCUS[s]||[s,"Brief","Meta"])}catch(e){}$("#title").textContent=TITLE[s];
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
  if(s==="cover")delete VIEW[vk];if(!o.fresh&&!VIEW[vk]&&s!=="cover"){const pv=pvGet(vk);if(pv)VIEW[vk]=pv}
@@ -678,12 +772,12 @@ window.addEventListener("shifthub:floorsync",()=>{if(!document.querySelector("#a
 let LASTPULL=Date.now();const pull=(why)=>{if(document.hidden||!ShiftData.Key.get()||Date.now()-LASTPULL<20000)return;LASTPULL=Date.now();TRIG=why||"refresh";meta=null;metaAt=0;ShiftData.reset();
  // v38: always do a real network refetch of Meta (even on Settings/Tools screens that load no data tab), so every trigger re-checks.
  ShiftData.load("Meta",{fresh:1}).catch(()=>{});
- if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)};
+ if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot"].includes(cur))show(cur)};
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull("visible")});window.addEventListener("focus",()=>pull("focus"));window.addEventListener("pageshow",e=>{if(e.persisted)pull("pageshow")});window.addEventListener("online",()=>pull("online"));
 setInterval(()=>{LASTPULL=0;pull("3-min timer")},180000);
 // v37: Settings "Last checked" (any live refetch completing, even with no data change).
 window.addEventListener("shifthub:checked",()=>{CHK={at:ShiftData.status.checkedAt,why:TRIG};const el=document.getElementById("lastchk");if(el)el.textContent=chkTxt()});
-window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover"].includes(cur))show(cur)});
+window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot"].includes(cur))show(cur)});
 app.addEventListener("input",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
 app.addEventListener("change",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const m=tmin(e.target.value);if(!isNaN(m))e.target.value=ampm(m)}if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});
 setSrc(false);show("home");

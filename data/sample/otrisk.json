@@ -1,0 +1,50 @@
+[
+ {
+  "row_type": "DATA",
+  "week_start": "2026-11-22",
+  "first_name": "Cody O",
+  "role": "Shift Manager",
+  "scheduled_hours": "42.5",
+  "worked_hours": "",
+  "projected_hours": "42.5",
+  "over_by": "2.5",
+  "cut_date": "2026-11-27",
+  "cut_shift": "2p-10p",
+  "cut_hours": "3",
+  "why": "Friday close is overstaffed by one manager after 7 PM",
+  "fixes": "End shift at 7 PM; Swap Friday close with Hana L (30 h); Move 2.5 h to next week",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "week_start": "2026-11-22",
+  "first_name": "Juan A",
+  "role": "Crew Member",
+  "scheduled_hours": "37.5",
+  "worked_hours": "8",
+  "projected_hours": "41",
+  "over_by": "1",
+  "cut_date": "2026-11-28",
+  "cut_shift": "6a-2p",
+  "cut_hours": "1.5",
+  "why": "Saturday breakfast has 2 extra crew before 7 AM",
+  "fixes": "Start at 7:30 AM instead of 6 AM; Offer the hours to a crew member under 30 h",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "week_start": "2026-11-22",
+  "first_name": "Ana R",
+  "role": "Crew Member",
+  "scheduled_hours": "38",
+  "worked_hours": "",
+  "projected_hours": "38",
+  "over_by": "0",
+  "cut_date": "",
+  "cut_shift": "",
+  "cut_hours": "",
+  "why": "Close to 40; any added shift goes over",
+  "fixes": "Don't add shifts this week",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ }
+]

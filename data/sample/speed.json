@@ -12,7 +12,11 @@
   "cash_sec": "42",
   "second_window_sec": "70",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "113.1",
+  "sales_proj": "120",
+  "hours": "1.5",
+  "hours_need": "1.5"
  },
  {
   "row_type": "EXAMPLE",
@@ -27,7 +31,11 @@
   "cash_sec": "34",
   "second_window_sec": "47",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "267.75",
+  "sales_proj": "260",
+  "hours": "4.25",
+  "hours_need": "3.25"
  },
  {
   "row_type": "EXAMPLE",
@@ -42,7 +50,11 @@
   "cash_sec": "33",
   "second_window_sec": "74",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "315.48",
+  "sales_proj": "340",
+  "hours": "4.25",
+  "hours_need": "4.25"
  },
  {
   "row_type": "EXAMPLE",
@@ -57,7 +69,11 @@
   "cash_sec": "35",
   "second_window_sec": "85",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "271.07",
+  "sales_proj": "300",
+  "hours": "4.25",
+  "hours_need": "3.75"
  },
  {
   "row_type": "EXAMPLE",
@@ -72,7 +88,11 @@
   "cash_sec": "36",
   "second_window_sec": "73",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "292.34",
+  "sales_proj": "280",
+  "hours": "3.5",
+  "hours_need": "3.5"
  },
  {
   "row_type": "EXAMPLE",
@@ -87,7 +107,11 @@
   "cash_sec": "40",
   "second_window_sec": "100",
   "pre_rush_positioning_note": "EXAMPLE: Put strongest on 2nd window by 10:50",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "582.77",
+  "sales_proj": "620",
+  "hours": "8.25",
+  "hours_need": "7.75"
  },
  {
   "row_type": "EXAMPLE",
@@ -101,8 +125,12 @@
   "order_sec": "50",
   "cash_sec": "35",
   "second_window_sec": "85",
-  "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "pre_rush_positioning_note": "Put the strongest order taker on lane 1 by 11:45",
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "740.85",
+  "sales_proj": "780",
+  "hours": "9.75",
+  "hours_need": "9.75"
  },
  {
   "row_type": "EXAMPLE",
@@ -117,7 +145,11 @@
   "cash_sec": "32",
   "second_window_sec": "80",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "681.74",
+  "sales_proj": "650",
+  "hours": "8.62",
+  "hours_need": "8.12"
  },
  {
   "row_type": "EXAMPLE",
@@ -132,7 +164,11 @@
   "cash_sec": "32",
   "second_window_sec": "59",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "356.66",
+  "sales_proj": "380",
+  "hours": "4.75",
+  "hours_need": "4.75"
  },
  {
   "row_type": "EXAMPLE",
@@ -147,7 +183,11 @@
   "cash_sec": "36",
   "second_window_sec": "69",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "314.76",
+  "sales_proj": "300",
+  "hours": "4.25",
+  "hours_need": "3.75"
  },
  {
   "row_type": "EXAMPLE",
@@ -162,7 +202,11 @@
   "cash_sec": "43",
   "second_window_sec": "104",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "375.87",
+  "sales_proj": "360",
+  "hours": "4.5",
+  "hours_need": "4.5"
  },
  {
   "row_type": "EXAMPLE",
@@ -177,7 +221,11 @@
   "cash_sec": "44",
   "second_window_sec": "99",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "557.8",
+  "sales_proj": "600",
+  "hours": "8.0",
+  "hours_need": "7.5"
  },
  {
   "row_type": "EXAMPLE",
@@ -192,7 +240,11 @@
   "cash_sec": "35",
   "second_window_sec": "72",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "648.23",
+  "sales_proj": "640",
+  "hours": "8.5",
+  "hours_need": "8.0"
  },
  {
   "row_type": "EXAMPLE",
@@ -207,7 +259,11 @@
   "cash_sec": "39",
   "second_window_sec": "89",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "439.49",
+  "sales_proj": "480",
+  "hours": "6.5",
+  "hours_need": "6.0"
  },
  {
   "row_type": "EXAMPLE",
@@ -222,7 +278,11 @@
   "cash_sec": "44",
   "second_window_sec": "94",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "326.69",
+  "sales_proj": "320",
+  "hours": "4.0",
+  "hours_need": "4.0"
  },
  {
   "row_type": "EXAMPLE",
@@ -237,7 +297,11 @@
   "cash_sec": "33",
   "second_window_sec": "86",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "205.04",
+  "sales_proj": "220",
+  "hours": "3.75",
+  "hours_need": "2.75"
  },
  {
   "row_type": "EXAMPLE",
@@ -252,7 +316,11 @@
   "cash_sec": "40",
   "second_window_sec": "88",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "152.06",
+  "sales_proj": "160",
+  "hours": "2.5",
+  "hours_need": "2.0"
  },
  {
   "row_type": "EXAMPLE",
@@ -267,6 +335,29 @@
   "cash_sec": "31",
   "second_window_sec": "70",
   "pre_rush_positioning_note": "",
-  "last_updated": "2026-10-30T14:00:00-04:00"
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "99.14",
+  "sales_proj": "110",
+  "hours": "1.88",
+  "hours_need": "1.38"
+ },
+ {
+  "row_type": "EXAMPLE",
+  "date": "2026-10-30",
+  "hour": "ALL",
+  "oepe_sec": "178",
+  "total_time_sec": "",
+  "last_week_oepe_sec": "177",
+  "last_week_total_sec": "",
+  "slow_flag": "",
+  "order_sec": "",
+  "cash_sec": "",
+  "second_window_sec": "",
+  "pre_rush_positioning_note": "",
+  "last_updated": "2026-10-30T14:00:00-04:00",
+  "sales": "6740.84",
+  "sales_proj": "6920",
+  "hours": "93.0",
+  "hours_need": "86.5"
  }
 ]

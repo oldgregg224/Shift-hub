@@ -1,4 +1,4 @@
-// Shift Hub v40: "Who can cover?" shift-finder logic (pure functions, no DOM; unit-tested in tests/cover.test.js).
+// Shift Hub v41: "Who can cover?" shift-finder logic (pure functions, no DOM; unit-tested in tests/cover.test.js).
 // Inputs are Sheet rows: Crew, Skills, DaysOff, WeekHours, Availability, SchoolCal. Read-only, suggestions only.
 // Florida minor rules follow Florida Statutes 450.081 (http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0400-0499/0450/Sections/0450.081.html).
 (function(root){
@@ -21,7 +21,7 @@ function schoolCal(rows){const m={};(rows||[]).filter(isData).forEach(r=>{const 
  const has=Object.keys(m).length>0;
  const inYear=d=>{const md=d.slice(5);return md>="08-10"||md<="05-31"};
  return{has,school:d=>has&&d in m?m[d]:(inYear(d)&&wday(d)>=1&&wday(d)<=5),inSession:d=>{if(has){for(let i=0;i<7;i++){if(m[addD(d,i-wday(d))])return true}return false}return inYear(d)}}}
-// Minor rules for one shift. sh={date,start,end} (minutes after midnight; end<=start = overnight). wk = scheduled hours this week.
+// Minor rules for one shift. sh={date,start,end} (minutes after midnight; end<=start = overnight). wk = this week's hours (worked if known, else scheduled).
 // Returns {no:[reasons that exclude], warn:[cautions], cap}. Exemptions/waivers (graduates, hardship, home school) are the manager's call.
 function minorCheck(b,sh,cal,wk){const no=[],warn=[];const len=((sh.end<=sh.start?sh.end+1440:sh.end)-sh.start)/60,end=sh.end<=sh.start?sh.end+1440:sh.end;
  const schoolNext=cal.school(addD(sh.date,1)),schoolToday=cal.school(sh.date),inSess=cal.inSession(sh.date),sun=wday(sh.date)===0;
@@ -54,7 +54,10 @@ function rank(inp){const sh=inp.shift,cal=schoolCal(inp.schoolCal);const len=((s
  const off={};(inp.daysOff||[]).filter(isData).forEach(r=>{if(dOf(r.date)!==sh.date)return;const k=nk(r.name),t=String(r.type||"").toLowerCase();if(!k)return;
   if(/approved/.test(t)||yes(r.time_off_approved))off[k]="approved";else if((/pending/.test(t)||yes(r.time_off_pending))&&off[k]!=="approved")off[k]="pending"});
  const ws=addD(sh.date,-wday(sh.date)); // Sunday week start (WeekHours week_start is a Sunday)
- const wh={};(inp.weekHours||[]).filter(isData).forEach(r=>{const w=dOf(r.week_start);if(w&&!(w<=sh.date&&sh.date<addD(w,7)))return;const v=parseFloat(r.scheduled_hours);if(!isNaN(v))wh[nk(r.name)]=v});
+ // v41: worked_hours (when the sync fills it) wins over scheduled_hours for the cap/OT math; both are shown.
+ const pf=v=>{const x=parseFloat(String(v==null?"":v).replace(/[^0-9.\-]/g,""));return isNaN(x)?null:x};
+ const wh={};(inp.weekHours||[]).filter(isData).forEach(r=>{const w=dOf(r.week_start);if(w&&!(w<=sh.date&&sh.date<addD(w,7)))return;const s=pf(r.scheduled_hours),wk=pf(r.worked_hours);if(s===null&&wk===null)return;
+  const k=nk(r.name),o=wh[k]||{s:null,w:null};if(s!==null)o.s=s;if(wk!==null)o.w=wk;wh[k]=o});
  const av={};(inp.avail||[]).filter(isData).forEach(r=>{(av[nk(r.name)]=av[nk(r.name)]||[]).push(r)});const hasAv=Object.keys(av).length>0;
  const st=String(sh.value||"").trim(),isSt=sh.type==="station",STU=st.toUpperCase(),maint=isMaintShift(sh);
  const ok=[],no=[],seen=new Set();
@@ -67,18 +70,20 @@ function rank(inp){const sh=inp.shift,cal=schoolCal(inp.schoolCal);const len=((s
   else if(nk(c.role)!==nk(st))why.push("different role");
   if(isSt&&!maint&&isMgr(c.role))why.push("manager");
   if(off[k]==="approved")why.push("approved time off "+sh.date);if(off[k]==="pending")warn.push("pending time off");
-  const known=k in wh,wk=known?wh[k]:0;if(!known)warn.push("week hours not in Sheet");
+  const known=k in wh,hw=known?wh[k]:{s:null,w:null},basis=hw.w!==null?"worked":hw.s!==null?"scheduled":"",wk=hw.w!==null?hw.w:hw.s!==null?hw.s:0;if(!known)warn.push("week hours not in Sheet");
   let cap=40;if(b==="16-17"||b==="14-15"){const m=minorCheck(b,sh,cal,wk);why.push(...m.no);warn.push(...m.warn);cap=m.cap}
   else if(!b)warn.push("age unknown — check");
   if(cap===40&&wk+len>40)why.push("would hit "+h1(wk+len)+" of 40 hrs (OT)");
   const left=Math.round((cap-wk)*10)/10;
-  const o={name:String(c.name).trim().split(/\s+/).slice(0,2).join(" "),role:c.role||"",band:b,minor:yes(c.minor),phone:String(c.phone||"").trim(),lvl,verified:ver,wk,known,cap,left,after:Math.round((cap-wk-len)*10)/10,
+  const o={name:String(c.name).trim().split(/\s+/).slice(0,2).join(" "),role:c.role||"",band:b,minor:yes(c.minor),phone:String(c.phone||"").trim(),lvl,verified:ver,wk,known,sched:hw.s,worked:hw.w,basis,cap,left,after:Math.round((cap-wk-len)*10)/10,
    avail:hasAv?(av[k]||[]):null,why,warn};(why.length?no:ok).push(o)});
  // Rank: verified skills first, then higher station level, then fewer cautions, then most hours left, then name.
  ok.sort((a,b)=>(b.verified-a.verified)||((b.lvl||0)-(a.lvl||0))||(a.warn.length-b.warn.length)||(b.after-a.after)||a.name.localeCompare(b.name));
  no.sort((a,b)=>a.name.localeCompare(b.name));
  return{ok,no,len,schoolNight:cal.school(addD(sh.date,1)),calKnown:cal.has,hasAv}}
 const telOf=p=>{const d=String(p||"").replace(/[^\d+]/g,"");if(!d)return null;const t=d.startsWith("+")?d:(d.length===10?"+1"+d:d);const n=t.replace(/^\+1/,"");return{href:"tel:"+t,label:n.length===10?n.slice(0,3)+"-"+n.slice(3,6)+"-"+n.slice(6):p}};
-const api={rank,minorCheck,schoolCal,band,telOf,fmt,addD,wday};
+// "worked 28 h · scheduled 32 h" (either part only when known); "" when the week's row is missing.
+const hoursTxt=o=>[o.worked!=null?"worked "+h1(o.worked)+" h":"",o.sched!=null?"scheduled "+h1(o.sched)+" h":""].filter(Boolean).join(" · ");
+const api={hoursTxt,rank,minorCheck,schoolCal,band,telOf,fmt,addD,wday};
 if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.ShiftFinder=api;
 })(typeof window!=="undefined"?window:globalThis);

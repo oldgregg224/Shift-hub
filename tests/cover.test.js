@@ -51,4 +51,18 @@ r=SF.rank({crew:[C("Hana L",{role:"Certified Swing Manager"}),C("Ana R")],skills
 eq(r.ok.map(o=>o.name),["Hana L"],"role match");eq(r.ok[0].left,10,"hours left before OT");has(r.no[0].why,/different role/,"role reason");
 eq(SF.telOf("+16892366623"),{href:"tel:+16892366623",label:"689-236-6623"},"tel");eq(SF.telOf("4075550100").href,"tel:+14075550100","tel 10 digit");
 eq(r.ok[0].avail,null,"no availability rows -> null (shows 'not in Harri')");
+// 10. v41 worked vs scheduled hours: worked wins for the cap/OT math; both reported; blank worked falls back.
+const HW=(name,sch,wk,w="2026-11-01")=>({row_type:"DATA",name,week_start:w,scheduled_hours:sch==null?"":String(sch),worked_hours:wk==null?"":String(wk)});
+r=base(grill("2026-11-03",t(16),t(22)),[C("Ana R"),C("Ben T"),C("Cy D"),C("Dee F")],["Ana R","Ben T","Cy D","Dee F"].map(x=>K(x,"GRILL REGULAR MENU",3)),[HW("Ana R",32,28),HW("Ben T",30,""),HW("Cy D","",12),HW("Dee F",20,36)]);
+const fa=nm=>r.ok.concat(r.no).find(o=>o.name===nm);
+eq([fa("Ana R").worked,fa("Ana R").sched,fa("Ana R").wk,fa("Ana R").basis],[28,32,28,"worked"],"worked + scheduled parsed, worked used");
+eq(fa("Ana R").left,12,"hours left uses worked");eq(SF.hoursTxt(fa("Ana R")),"worked 28 h · scheduled 32 h","both shown");
+eq([fa("Ben T").worked,fa("Ben T").wk,fa("Ben T").basis],[null,30,"scheduled"],"blank worked -> scheduled");eq(SF.hoursTxt(fa("Ben T")),"scheduled 30 h","scheduled only text");
+eq([fa("Cy D").sched,fa("Cy D").wk,fa("Cy D").basis,fa("Cy D").known],[null,12,"worked",true],"worked only");eq(SF.hoursTxt(fa("Cy D")),"worked 12 h","worked only text");
+has(fa("Dee F").why,/42 of 40 hrs \(OT\)/,"OT from worked hours even though scheduled is low");
+no(fa("Ana R").warn,/week hours not in Sheet/,"known week has no missing-hours warning");
+// Minor cap uses worked hours too; other week's row ignored; missing row keeps the warning.
+r=base(grill("2026-11-06",t(16),t(22)),[m16],[k16],[HW("Cara M",10,26)]);has(r.no[0].why,/32 of 30 hrs/,"16-17 cap from worked");
+r=base(grill("2026-11-03",t(16),t(22)),[C("Ana R")],[K("Ana R","GRILL REGULAR MENU",3)],[HW("Ana R",30,30,"2026-11-08")]);has(r.ok[0].warn,/week hours not in Sheet/,"other week ignored -> warning");eq(SF.hoursTxt(r.ok[0]),"","no hours text when row missing");
+r=base(grill("2026-11-03",t(16),t(22)),[C("Ana R")],[K("Ana R","GRILL REGULAR MENU",3)],[HW("Ana R","","")]);has(r.ok[0].warn,/week hours not in Sheet/,"blank row -> warning");
 console.log(`${n-f}/${n} passed`);process.exit(f?1:0);

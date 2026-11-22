@@ -1,0 +1,37 @@
+[
+ {
+  "row_type": "DATA",
+  "item": "Caramel Syrup",
+  "category": "Beverage",
+  "since": "2026-11-22T06:10:00-05:00",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "item": "Strawberry Banana Smoothie Base",
+  "category": "Beverage",
+  "since": "2026-11-21T14:30:00-05:00",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "item": "Apple Pie",
+  "category": "Dessert",
+  "since": "2026-11-22T07:05:00-05:00",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "item": "Hot Mustard Sauce",
+  "category": "Condiment",
+  "since": "2026-11-20T11:00:00-05:00",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "item": "Bacon Strips",
+  "category": "Breakfast",
+  "since": "2026-11-22T05:45:00-05:00",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ }
+]

@@ -1,0 +1,86 @@
+[
+ {
+  "row_type": "DATA",
+  "rush": "breakfast",
+  "check_by": "06:30",
+  "station": "Grill",
+  "item": "Round eggs and sausage at full hold level",
+  "why": "6:30-9 AM is the breakfast peak",
+  "trigger": "daily",
+  "done": "Y",
+  "done_at": "2026-11-22T06:22:00-05:00",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "rush": "breakfast",
+  "check_by": "06:45",
+  "station": "Drive Thru",
+  "item": "Second order taker on headset",
+  "why": "Order point was the slowest step last week",
+  "trigger": "daily",
+  "done": "",
+  "done_at": "",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "rush": "lunch",
+  "check_by": "10:45",
+  "station": "Fries",
+  "item": "Two baskets down, bags staged",
+  "why": "Lunch starts 11 AM",
+  "trigger": "daily",
+  "done": "",
+  "done_at": "",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "rush": "lunch",
+  "check_by": "10:50",
+  "station": "Window",
+  "item": "Runner assigned for parked orders",
+  "why": "Keeps OEPE under 3:30",
+  "trigger": "daily",
+  "done": "",
+  "done_at": "",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "rush": "lunch",
+  "check_by": "11:00",
+  "station": "Lobby",
+  "item": "Kiosks and drink station clean and stocked",
+  "why": "Guest notes mentioned the drink station",
+  "trigger": "daily",
+  "done": "",
+  "done_at": "",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "rush": "dinner",
+  "check_by": "16:45",
+  "station": "Grill",
+  "item": "Meat and chicken at dinner levels",
+  "why": "Dinner peak 5-7 PM",
+  "trigger": "daily",
+  "done": "",
+  "done_at": "",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "rush": "event",
+  "check_by": "20:30",
+  "station": "Drive Thru",
+  "item": "Extra crew on for post-game rush",
+  "why": "Stadium event lets out around 9 PM",
+  "trigger": "Magic home game",
+  "done": "",
+  "done_at": "",
+  "last_updated": "2026-11-22T08:15:00-05:00"
+ }
+]
