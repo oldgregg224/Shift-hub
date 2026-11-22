@@ -1,5 +1,5 @@
-const C="shifthub-v42",SAMPLES=["brief","labor","events","speed","smg","roster","comments","coverage","crew","skills","daysoff","weekhours","availability","schoolcal","outofstock","prerush","otrisk"].map(t=>"data/sample/"+t+".json"),
-A=["./","index.html","styles.css","config.js","js/icons.js","icon.svg","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","icons/apple-touch-icon.png","js/data.js","js/floor.js","js/cover.js","js/present.js","js/app.js","manifest.json",...SAMPLES];
+const C="shifthub-v43",SAMPLES=["brief","labor","events","speed","smg","roster","comments","coverage","crew","skills","daysoff","weekhours","availability","schoolcal","outofstock","prerush","otrisk","shiftgoals","shiftgrades","tasks"].map(t=>"data/sample/"+t+".json"),
+A=["./","index.html","styles.css","config.js","js/icons.js","icon.svg","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","icons/apple-touch-icon.png","js/data.js","js/floor.js","js/cover.js","js/present.js","js/shift.js","js/tasks.js","js/app.js","manifest.json",...SAMPLES];
 // Install fresh copies (bypass HTTP cache) and take over right away.
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(A.map(u=>new Request(u,{cache:"reload"})))))});
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith("shifthub-")&&k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

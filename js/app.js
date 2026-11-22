@@ -30,7 +30,7 @@ let meta=null,metaAt=0,metaPend=false;
 const fmtT=d=>d.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
 const STALE=90*60000;
 // Per-tab freshness: Events weekly (Mon), SMG/Comments every 4h (4.5h), Roster/Coverage at 6a/2p/10p (8.5h); Brief/Labor/Speed 90 min.
-const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:25*36e5,Roster:8.5*36e5,Coverage:7*864e5,Crew:8.5*36e5,Skills:8.5*36e5,DaysOff:8.5*36e5,WeekHours:8.5*36e5,Availability:8.5*36e5,SchoolCal:8*864e5,PreRush:8.5*36e5,OTRisk:8.5*36e5};// v39: Brief/Labor/Speed sync hourly 6-9 AM, 11 AM-2 PM, 5-8 PM ET (longest daytime gap ~3h, no runs 8 PM-6 AM).
+const STALE_BY={Events:8*864e5,SMG:4.5*36e5,Comments:25*36e5,Roster:8.5*36e5,Coverage:7*864e5,Crew:8.5*36e5,Skills:8.5*36e5,DaysOff:8.5*36e5,WeekHours:8.5*36e5,Availability:8.5*36e5,SchoolCal:8*864e5,PreRush:8.5*36e5,OTRisk:8.5*36e5,ShiftGrades:8.5*36e5,Tasks:7*864e5};// v39: Brief/Labor/Speed sync hourly 6-9 AM, 11 AM-2 PM, 5-8 PM ET (longest daytime gap ~3h, no runs 8 PM-6 AM). v43: ShiftGoals live fields use ShiftCal.LIVE_STALE_MS (~2h15m); the goals row itself uses ShiftCal.GOAL_STALE_MS (8.5h, refreshes ~6:35a/2:35p/10:35p).
 // Daytime (6:30 AM-8:30 PM ET): stale if older than 3.5h. Overnight (8:30 PM-6:30 AM ET): stale only if older than
 // the evening's 7 PM ET run window (7 PM today if after 8:30 PM, else 7 PM yesterday). Uses the phone clock, in ET.
 const SCHED=new Set(["Brief","Labor","Speed","OutOfStock"]); // v41: OutOfStock is rewritten every rush-hours sync, same schedule
@@ -48,13 +48,13 @@ async function syncTime(tab,rows){if(ShiftData.Key.get()&&(!meta||Date.now()-met
  const ok=cs.filter(c=>!isNaN(c.d)).sort((a,b)=>b.d-a.d);return ok.length?ok[0]:{v:cs[0].v,d:null}}
 async function setUpd(tab,rows,live,r){const scr0=cur;if(tab==="Speed"&&cur==="rushes"&&live&&!(rows&&rows.length))return;r=r||{src:live?"live":"sample"};const u=$("#upd");
  if(!live){CUR={src:"sample",stale:false,tab};u.textContent="Sample data · not live";u.classList.remove("stale");return}
- let t=await syncTime(tab,rows),thr=staleMs(tab);if(cur!==scr0)return;// v38: a late write from a screen the user already left must not overwrite this screen's header
+ let t=await syncTime(tab,rows),thr=staleMs(tab),liveStamp=null,goalStamp=null;if(tab==="ShiftGoals"){liveStamp=ShiftCal.newestStamp(rows,"live_updated");goalStamp=t;if(liveStamp&&liveStamp.d&&(!t||!t.d||liveStamp.d>t.d))t=liveStamp}if(cur!==scr0)return;// v38: a late write from a screen the user already left must not overwrite this screen's header
  // Rushes: if Speed has live rows with a newer sync time, show that time with Speed's threshold.
  if(tab==="Events"&&cur==="rushes"){const sp=await within(ShiftData.load("Speed"),2500,null);if(sp&&sp.live&&sp.rows&&sp.rows.length){const t2=await syncTime("Speed",sp.rows);if(t2&&t2.d&&(!t||!t.d||t2.d>t.d)){t=t2;thr=staleMs("Speed")}}}
  // v33: while the live fetch is still in flight (saved copy shown), never style it stale; wait for the live result.
  const fl=[r.refreshing&&ShiftData.inflight(tab),metaPend&&r.src!=="cached"&&ShiftData.inflight("Meta")].filter(Boolean);const pend=fl.length>0;if(cur!==scr0)return;
  if(pend){const scr=cur;Promise.allSettled(fl).then(()=>{metaPend=false;if(cur===scr&&!document.querySelector("#app input:focus")&&!$("#sheet"))show(scr)})}
- const stale=!pend&&!!(t&&t.d&&Date.now()-t.d>thr);CUR={src:r.src,stale,tab,at:r.at};
+ const stale=tab==="ShiftGoals"?(!pend&&ShiftCal.goalsAreStale(liveStamp,goalStamp,Date.now())):(!pend&&!!(t&&t.d&&Date.now()-t.d>thr));CUR={src:r.src,stale,tab,at:r.at};
  let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(pend?" · checking…":stale?" · stale":""):(pend?"Checking…":"Last synced: not in Sheet");
  if(r.src==="cached"&&r.at)txt+=" · saved copy from "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached");TABST[cur]={c:Object.assign({},CUR),upd:txt,cls:stale||r.src==="cached"}}
@@ -155,11 +155,12 @@ async home(){const r=await get("Brief"),b=r[0]||{};const EX=homeExtras();
  return keyAlert()+rush+
  kpi("Sales",money(sa),isNaN(sp)?"":"of "+money(sp)+" projected",ss,(isNaN(sa-sp)?"":(sa-sp<0?"−":"+")+money(Math.abs(sa-sp))+" · ")+({good:"Ahead",warn:"Behind",bad:"Behind"}[ss]||""),null)+
  kpi("Labor",pct(la),isNaN(lp)?"":"target "+pct(lp),ls,(isNaN(la-lp)?"":sgn(la-lp,1)+" · ")+({good:"On target",warn:"Watch",bad:"Over"}[ls]||""),"labor")+
+ goalHome(X.goals)+
  `<div class="grid">`+
  kpi("Overtime",ot,ot?otN:"No one close",status(ot,0,"count"),ot?"Watch":"Clear","ot",1)+
  (odNA?"":kpi("Overdue",od,od?b.overdue_checklists:"All checklists done",od?"bad":"good",od?"Late":"Clear","floor",1))+
  kpi("Guest notes",cm,"new comments",null,null,"guest",1)+
- kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+preHome(X.pre)+oosHome(X.oos)+await whoHome()},
+ kpi("Requests",hr,"open in Harri",status(hr,0,"count"),hr?"Open":"Clear",null,1)+`</div>`+gradeHome(X.grades)+taskHome(X.tasks)+preHome(X.pre)+oosHome(X.oos)+await whoHome()},
 
 async labor(){const r=await get("Labor");
  const hasToday=(r||[]).some(x=>ShiftPresent.isoDate(fld(x,["date","business_date","day"]))===ymd(new Date())&&!/^(header|example|note|prep|baseline)$/i.test(String(x.row_type||"")));
@@ -520,9 +521,9 @@ function otRows(rows){const r=(rows||[]).filter(isDR).filter(x=>String(x.first_n
  const h=v=>{const x=n(v);return isNaN(x)?-1e9:x};return r.filter(x=>!ws||!x.week_start||String(x.week_start).slice(0,10)===ws).sort((a,b)=>h(b.over_by)-h(a.over_by)||h(b.projected_hours)-h(a.projected_hours))}
 // Home extras: never hold Home up more than 2.5 s; redraw once when late rows land.
 let XLATE=0;
-async function homeExtras(){const ld=t=>ShiftData.load(t).catch(()=>({rows:[],src:"error"}));const ps={oos:ld("OutOfStock"),ot:ld("OTRisk"),pre:ld("PreRush")};
+async function homeExtras(){const ld=t=>ShiftData.load(t).catch(()=>({rows:[],src:"error"}));const ps={oos:ld("OutOfStock"),ot:ld("OTRisk"),pre:ld("PreRush"),goals:ld("ShiftGoals"),grades:ld("ShiftGrades"),tasks:ld("Tasks")};
  const ks=Object.keys(ps),vs=await Promise.all(ks.map(k=>within(ps[k],2500,null)));const out={};let late=false;
- ks.forEach((k,i)=>{const v=vs[i];if(!v)late=true;const rows=v?(v.rows||[]).filter(isDR):[];out[k]=k==="ot"?otRows(rows):k==="oos"?rows.filter(x=>String(x.item||"").trim()):rows.filter(x=>String(x.item||"").trim())});
+ ks.forEach((k,i)=>{const v=vs[i];if(!v)late=true;if(k==="goals"||k==="grades"||k==="tasks"){out[k]=v||{rows:[],src:"slow"};return}const rows=v?(v.rows||[]).filter(isDR):[];out[k]=k==="ot"?otRows(rows):k==="oos"?rows.filter(x=>String(x.item||"").trim()):rows.filter(x=>String(x.item||"").trim())});
  if(late)Promise.allSettled(ks.map(k=>ps[k])).then(()=>{if(cur==="home"&&!$("#sheet")&&!editing()&&Date.now()-XLATE>20000){XLATE=Date.now();show("home")}});
  return out}
 function oosHome(rows){if(!rows||!rows.length)return "";const it=rows.map(x=>({x,s:since_(x.since)})).sort((a,b)=>(a.s.ms??Infinity)-(b.s.ms??Infinity));
@@ -538,7 +539,7 @@ const backBtn=()=>{const to=FROM==="tools"?"tools":"home";return `<button class=
 async function loadT(tab){const r=await ShiftData.load(tab).catch(e=>({rows:[],live:false,src:"error",err:e.message}));
  if(r.src==="unsupported"){const t="Waiting for the Apps Script update";CUR={src:"live",stale:false,tab};const u=$("#upd");u.textContent=t;u.classList.add("stale");TABST[cur]={c:Object.assign({},CUR),upd:t,cls:true};setSrc(true,"live");return r}
  if(r.src!=="error"){await setUpd(tab,r.rows,r.live,r);setSrc(r.live,r.src)}return r}
-const pendCard=(lbl,tab)=>`<div class="card stack" role="status"><div class="lbl">${esc(lbl)} needs the Apps Script update${chip("warn","Pending")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script is an older version that doesn't serve the ${esc(tab)} tab yet. Ask your GM to redeploy the latest Shift Hub Apps Script (v28). Everything else is live.</div></div>`;
+const pendCard=(lbl,tab)=>`<div class="card stack" role="status"><div class="lbl">${esc(lbl)} needs the Apps Script update${chip("warn","Pending")}</div><div class="meta" style="-webkit-line-clamp:6">The shared Sheet script is an older version that doesn't serve the ${esc(tab)} tab yet. Ask your GM to redeploy the latest Shift Hub Apps Script (v29). Everything else is live.</div></div>`;
 S.outofstock=async()=>{const r=await loadT("OutOfStock");const hd=backBtn()+`<div class="tip">${I("lock")}<span>Read-only · QSRSoft out-of-stock list via the Sheet</span></div>`;
  if(r.src==="unsupported")return hd+pendCard("Out of stock","OutOfStock");
  const rows=(r.rows||[]).filter(isDR).filter(x=>String(x.item||"").trim());
@@ -570,6 +571,172 @@ S.ot=async()=>{const r=await loadT("OTRisk");const hd=backBtn()+`<div class="tip
   ${cut||String(x.why||"").trim()?`<div class="det" style="padding:0">${cut?`<div><b>Suggested cut:</b> ${esc(cut)}</div>`:""}${String(x.why||"").trim()?`<div><b>Why:</b> ${esc(x.why)}</div>`:""}</div>`:""}
   ${fx.length?`<div class="det" style="padding:0"><div><b>Possible fixes</b></div>${fx.map(f=>`<div>• ${esc(f)}</div>`).join("")}</div>`:""}</div>`};
  return keyAlert()+hd+`<div class="card"><div class="lbl">Potential overtime${chip("warn",rows.length+" "+(rows.length===1?"person":"people"))}</div><div class="meta">${ws?"Week of "+esc(fmtDay(ws))+" · ":""}most over first</div></div>`+rows.map(card).join("")};
+
+// ---- v43: Shift goal (current shift), Shift grades (last 7 days), Tasks (the only dashboard write). ----
+const hrsTxt=v=>v==null||isNaN(v)?"—":((Math.round(v*10)/10)%1?(Math.round(v*10)/10).toFixed(1):String(Math.round(v)))+" h";
+const saleWord=st=>st==="good"?"Ahead":st==="warn"||st==="bad"?"Behind":"";
+const cmp=(lbl,main,sub,st,word)=>{if(word==null)word=st&&st!=="neutral"?(WORD[st]||""):"";
+ return `<div class="cmp"><span class="k">${esc(lbl)}${sub?`<small>${esc(sub)}</small>`:""}</span><span class="num${st&&st!=="neutral"?" "+st:""}">${main}</span>${word?chip(st,word):""}</div>`};
+const stampTxt=v=>{const d=new Date(v||"");return v&&!isNaN(d)?fmtT(d):""};
+function sheetRows(r){return ((r&&r.rows)||[]).filter(isDR)}
+function datedRows(r,dest){let rows=sheetRows(r);if(r&&r.src==="sample")rows=ShiftCal.anchorDates(rows,new Date(),dest);return rows}
+function goalMeta(g){if(!g.live)return "Live numbers not in yet"+(g.salesProj==null?"":" · proj "+money(g.salesProj));
+ const bits=[];if(g.salesSoFar!=null)bits.push("Sales "+money(g.salesSoFar)+(g.projSoFar==null?"":" of "+money(g.projSoFar))+(g.salesProj==null?"":" · shift "+money(g.salesProj)));
+ if(g.hoursSoFar!=null)bits.push(hrsTxt(g.hoursSoFar)+" vs need "+hrsTxt(g.needSoFar));return bits.join(" · ")||"Targets are in"}
+function goalHome(r){if(!r||r.src==="slow"||r.src==="error")return "";if(r.src==="unsupported")return `<button class="card tool" type="button" data-go="goals">${I("target")}<span><b>Shift goal needs the Apps Script update</b><span class="meta">Redeploy the script (v29) to serve ShiftGoals</span></span>${chip("warn","Pending")}${I("chevron-right","cv")}</button>`;
+ const st=ShiftCal.goalState(datedRows(r),new Date());const g=st.cur||st.next;if(!g){const lbl=st.shift?st.shift.label:"This shift";
+  return `<button class="card" type="button" data-go="goals"><div class="lbl">Shift goal</div><div class="hero sm">${esc(lbl)}</div><div class="meta">No goal in the Sheet for this shift.</div></button>`}
+ const tone=ShiftCal.trackTone(g.onTrack);
+ return `<button class="card" type="button" data-go="goals"><div class="lbl">${st.cur?"Shift goal":"Next shift"} · ${esc(g.label||"")}${g.onTrack?chip(tone,tone==="good"?"On track":"Watch"):""}</div>
+  <div class="mgr"><b>${esc(g.managerLabel)}</b><span class="meta" style="margin:0">Manager</span></div>
+  ${g.onTrack?`<div class="track">${esc(g.onTrack)}</div>`:""}<div class="meta">${esc(goalMeta(g))}</div></button>`}
+function goalCard(g,next){const tone=ShiftCal.trackTone(g.onTrack);const fresh=g.liveUpdated?"Live "+stampTxt(g.liveUpdated):g.lastUpdated?"Goals set "+stampTxt(g.lastUpdated):"";
+ let body="";
+ if(!g.live){body=`<p class="meta" style="-webkit-line-clamp:4">Live numbers not in yet.</p>`
+  +cmp("Sales projection",g.salesProj==null?"—":money(g.salesProj),"","neutral")
+  +cmp("Labor target",g.laborPctTarget==null?"—":pct(g.laborPctTarget),g.mtdLaborPct==null?"":"MTD "+pct(g.mtdLaborPct),g.mtdLaborPct==null?"neutral":ShiftCal.lowerStatus(g.mtdLaborPct,g.laborPctTarget))
+  +cmp("Hours cap",hrsTxt(g.hoursCap),"","neutral")
+  +cmp("OEPE target",mmss(g.oepeTarget==null?NaN:g.oepeTarget),"","neutral")
+  +cmp("KVS target",mmss(g.kvsTarget==null?NaN:g.kvsTarget),"","neutral")
+  +cmp("R2P target",mmss(g.r2pTarget==null?NaN:g.r2pTarget),"","neutral")}
+ else{const leftSt=g.hoursLeft==null||g.hoursCap==null?"neutral":g.hoursSoFar!=null&&g.hoursSoFar>g.hoursCap?(g.hoursSoFar-g.hoursCap>1?"bad":"warn"):g.hoursLeft>g.hoursCap?"warn":"good";
+  body=cmp("Sales so far",g.salesSoFar==null?"—":money(g.salesSoFar),[g.projSoFar==null?"":"of "+money(g.projSoFar)+" projected so far",g.salesProj==null?"":"shift "+money(g.salesProj)].filter(Boolean).join(" · "),ShiftCal.salesStatus(g.salesSoFar,g.projSoFar),saleWord(ShiftCal.salesStatus(g.salesSoFar,g.projSoFar)))
+  +cmp("Hours so far",hrsTxt(g.hoursSoFar),g.needSoFar==null?"":"need "+hrsTxt(g.needSoFar),ShiftCal.lowerStatus(g.hoursSoFar,g.needSoFar))
+  +cmp("Hours left",hrsTxt(g.hoursLeft),g.hoursCap==null?"":"cap "+hrsTxt(g.hoursCap),leftSt)
+  +cmp("Labor target",g.laborPctTarget==null?"—":pct(g.laborPctTarget),g.mtdLaborPct==null?"":"MTD "+pct(g.mtdLaborPct),g.mtdLaborPct==null?"neutral":ShiftCal.lowerStatus(g.mtdLaborPct,g.laborPctTarget))
+  +cmp("OEPE worst",mmss(g.oepeWorst==null?NaN:g.oepeWorst),g.oepeTarget==null?"":"target "+mmss(g.oepeTarget),ShiftCal.secStatus(g.oepeWorst,g.oepeTarget))
+  +cmp("KVS worst",mmss(g.kvsWorst==null?NaN:g.kvsWorst),g.kvsTarget==null?"":"target "+mmss(g.kvsTarget),ShiftCal.secStatus(g.kvsWorst,g.kvsTarget))
+  +cmp("R2P worst",mmss(g.r2pWorst==null?NaN:g.r2pWorst),g.r2pTarget==null?"":"target "+mmss(g.r2pTarget),ShiftCal.secStatus(g.r2pWorst,g.r2pTarget))}
+ const extra=[g.guestFocus?`<div class="tip">${I("users")}<span>${esc(g.guestFocus)}</span></div>`:"",g.speedFocus?`<div class="tip">${I("gauge")}<span>${esc(g.speedFocus)}</span></div>`:"",g.notes?`<p class="meta" style="-webkit-line-clamp:8">${esc(g.notes)}</p>`:""].join("");
+ return `<div class="card${next?"":" now"}"><div class="lbl">${next?"Next shift":"This shift"} · ${esc(g.label||"")}${g.date?" · "+esc(fmtDay(g.date)):""}${g.onTrack?chip(tone,tone==="good"?"On track":"Watch"):""}</div>
+  <div class="mgr"><b>${esc(g.managerLabel)}</b><span class="meta" style="margin:0">Manager</span></div>
+  ${g.onTrack?`<div class="track">${esc(g.onTrack)}</div>`:""}${body}${extra}${fresh?`<div class="meta">${esc(fresh)}</div>`:""}</div>`}
+S.goals=async()=>{const r=await loadT("ShiftGoals");const hd=backBtn()+`<div class="tip">${I("lock")}<span>Read-only · current shift · store time is Eastern</span></div>`;
+ if(r.src==="unsupported")return hd+pendCard("Shift goal","ShiftGoals");
+ const st=ShiftCal.goalState(datedRows(r),new Date());
+ if(!st.cur){const lbl=st.shift?st.shift.label:"This shift",day=st.shift?fmtDay(st.shift.date):"";
+  return keyAlert()+hd+`<div class="card"><div class="lbl">No goal for this shift</div><div class="hero sm">${esc(lbl)}</div><div class="meta">${esc(day?day+" · nothing in the Sheet for this shift yet.":"Nothing in the Sheet for this shift yet.")}</div></div>`+(st.next?goalCard(st.next,1):"");
+ }
+ return keyAlert()+hd+goalCard(st.cur)};
+function gradeHome(r){if(!r||r.src==="slow"||r.src==="error")return "";
+ if(r.src==="unsupported")return `<button class="card tool" type="button" data-go="grades">${I("award")}<span><b>Shift grades need the Apps Script update</b><span class="meta">Redeploy the script (v29) to serve ShiftGrades</span></span>${chip("warn","Pending")}${I("chevron-right","cv")}</button>`;
+ const list=ShiftCal.recentGrades(datedRows(r),new Date(),7);
+ if(!list.length)return `<button class="card tool" type="button" data-go="grades">${I("award")}<span><b>Shift grades</b><span class="meta">No grades in the last 7 days</span></span>${I("chevron-right","cv")}</button>`;
+ const g=list[0];return `<button class="card tool" type="button" data-go="grades">${I("award")}<span><b>Latest grade · ${esc(g.letter||"—")}</b><span class="meta">${esc([g.managerLabel,fmtDay(g.date),g.label].filter(Boolean).join(" · "))}</span></span>${chip(g.tone,g.letter||"—")}${I("chevron-right","cv")}</button>`}
+function gradeCard(g){const pair=(lbl,actual,target,kind,fmt)=>{const st=kind==="sales"?ShiftCal.salesStatus(actual,target):ShiftCal.lowerStatus(actual,target);
+  return cmp(lbl,actual==null?"—":fmt(actual),target==null?"":"target "+fmt(target),st,kind==="sales"?saleWord(st):null)};
+ return `<div class="card"><div class="lbl">${esc(fmtDay(g.date))} · ${esc(g.label||g.shift||"")}${g.goalsHit?chip("neutral",g.goalsHit+" hit"):""}</div>
+  <div class="grade-letter ${esc(g.tone)}">${esc(g.letter||"—")}</div>
+  <div class="mgr"><b>${esc(g.managerLabel)}</b><span class="meta" style="margin:0">Manager</span></div>
+  ${pair("Sales",g.sales,g.salesProj,"sales",money)+pair("Labor",g.laborPct,g.laborPctTarget,"labor",pct)+pair("Hours",g.hours,g.hoursCap,"labor",hrsTxt)}
+  ${cmp("OEPE",mmss(g.oepe==null?NaN:g.oepe),"","neutral")+cmp("KVS",mmss(g.kvs==null?NaN:g.kvs),"","neutral")+cmp("R2P",mmss(g.r2p==null?NaN:g.r2p),"","neutral")}
+  ${g.lowSurveys==null?"":cmp("Low surveys",String(g.lowSurveys),"",g.lowSurveys>0?"bad":"good",g.lowSurveys>0?"Low":"None")}
+  ${g.why?`<p class="meta" style="-webkit-line-clamp:8"><b>Why:</b> ${esc(g.why)}</p>`:""}
+  ${g.runBetter?`<p class="meta" style="-webkit-line-clamp:8"><b>Run it better:</b> ${esc(g.runBetter)}</p>`:""}
+  ${g.lastUpdated&&stampTxt(g.lastUpdated)?`<div class="meta">Updated ${esc(stampTxt(g.lastUpdated))}</div>`:""}</div>`}
+S.grades=async()=>{const r=await loadT("ShiftGrades");const hd=backBtn()+`<div class="tip">${I("lock")}<span>Read-only · last 7 days · newest first</span></div>`;
+ if(r.src==="unsupported")return hd+pendCard("Shift grades","ShiftGrades");
+ const list=ShiftCal.recentGrades(datedRows(r),new Date(),7);
+ if(!list.length)return keyAlert()+hd+empty(r.src==="error"?"Couldn't load shift grades":"No shift grades in the last 7 days");
+ return keyAlert()+hd+list.map(gradeCard).join("")};
+const MEK="shifthub_me",TQK="shifthub_taskq",TLK="shifthub_task_local";
+let TASKVIEW="mine",TASKSHIFT="",TASKREPEAT="none",TASKDAYS=[],TASKERR="",TASKBUSY=false,TASKROWS=[];
+const jget=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||"");return v==null?fb:v}catch(e){return fb}};
+const meName=()=>{try{return TaskLib.personName(localStorage.getItem(MEK)||"")}catch(e){return ""}};
+const qGet=()=>{const q=jget(TQK,[]);return Array.isArray(q)?q:[]};
+const qSet=a=>{try{localStorage.setItem(TQK,JSON.stringify(a))}catch(e){}};
+const locGet=()=>{const o=jget(TLK,{rows:[],hide:[]})||{rows:[],hide:[]};return {rows:Array.isArray(o.rows)?o.rows:[],hide:Array.isArray(o.hide)?o.hide:[]}};
+const locSet=o=>{try{localStorage.setItem(TLK,JSON.stringify({rows:o.rows||[],hide:o.hide||[]}))}catch(e){}};
+function taskLive(){return !!(ShiftData.hasUrl()&&ShiftData.Key.get()&&ShiftData.status.bad!=="key")}
+function mergeTasks(server){const loc=locGet();const byId=new Map((server||[]).map(r=>[String(r.id),r]));
+ loc.rows=loc.rows.filter(r=>{if(!r||!r.id)return false;if(String(r.id).indexOf("tmp")===0)return true;const s=byId.get(String(r.id));if(!s)return true;if(r._pending)return true;
+  return String(s.status||"")!==String(r.status||"")||String(s.done_by||"")!==String(r.done_by||"")});
+ loc.hide=loc.hide.filter(id=>byId.has(String(id)));locSet(loc);
+ const hide=new Set(loc.hide.map(String));const map=new Map();
+ (server||[]).forEach(r=>{if(r&&r.id&&!hide.has(String(r.id)))map.set(String(r.id),Object.assign({},r))});
+ loc.rows.forEach(r=>{if(!hide.has(String(r.id)))map.set(String(r.id),Object.assign({},map.get(String(r.id))||{},r))});
+ return [...map.values()]}
+function taskRowsOf(r){const dest=ShiftCal.etParts(new Date());return mergeTasks(datedRows(r,dest&&dest.ymd))}
+function patchTask(id,patch){const loc=locGet();const i=loc.rows.findIndex(r=>String(r.id)===String(id));
+ if(i>=0)loc.rows[i]=Object.assign({},loc.rows[i],patch);else loc.rows.push(Object.assign({id},patch));locSet(loc)}
+let FLUSHING=false;
+async function flushTasks(){if(FLUSHING||!taskLive())return null;const q=qGet();if(!q.length)return null;FLUSHING=true;
+ try{const map={};for(let i=0;i<q.length;i++){const op=q[i];const body=Object.assign({},op.body||{});
+   if(op.action!=="task_add"){const id=map[op.taskId]||op.taskId;if(String(id).indexOf("tmp")===0){qSet(q.slice(i));return {offline:true}}body.id=id}
+   try{const res=await ShiftData.api({action:op.action},body);
+    if(op.action==="task_add"&&res&&res.row){map[op.localId]=res.row.id;const loc=locGet();loc.rows=loc.rows.filter(r=>r.id!==op.localId);loc.rows.push(res.row);locSet(loc)}
+    else{const id=body.id;const loc=locGet();loc.rows=loc.rows.filter(r=>String(r.id)!==String(id)&&!(res&&res.next&&String(r.id)===String(res.next.id)));
+     if((op.action==="task_done"||op.action==="task_undo")&&res&&res.row)loc.rows.push(res.row);
+     if(res&&res.next)loc.rows.push(res.next);locSet(loc)}}
+   catch(e){const msg=e&&e.message||"";if(/bad action|bad tab|unknown action/i.test(msg)){qSet([]);const loc=locGet();loc.rows=loc.rows.filter(r=>!r._pending);locSet(loc);return {unsupported:true,error:msg}}
+    if(/bad key/i.test(msg)){qSet(q.slice(i));return {error:msg}}qSet(q.slice(i));return {offline:true,error:msg}}}
+  qSet([]);return null}finally{FLUSHING=false}}
+async function taskAct(action,body){if(TASKBUSY)return {error:"Working…"};TASKBUSY=true;TASKERR="";
+ try{const v=action==="task_add"?{ok:true,row:body}:action==="task_done"?TaskLib.validateDone(body):action==="task_undo"?TaskLib.validateUndo(body):TaskLib.validateDelete(body);
+  if(!v.ok){TASKERR=v.error;return v}
+  const now=new Date().toISOString();let localId="",taskId=v.id||"";
+  if(action==="task_add"){localId="tmp"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+   patchTask(localId,Object.assign({},body,{id:localId,status:"open",created_at:now,done_by:"",done_at:"",last_updated:now,_pending:1}))}
+  else if(action==="task_done")patchTask(taskId,{status:"done",done_by:v.done_by,done_at:now,last_updated:now,_pending:1});
+  else if(action==="task_undo")patchTask(taskId,{status:"open",done_by:"",done_at:"",last_updated:now,_pending:1});
+  else{const loc=locGet();loc.rows=loc.rows.filter(r=>String(r.id)!==String(taskId));loc.hide.push(taskId);locSet(loc)}
+  if(!taskLive()){if(action==="task_add")patchTask(localId,{_pending:false});else if(action!=="task_delete")patchTask(taskId,{_pending:false});
+   if(action==="task_done"){const base=TASKROWS.find(r=>String(r.id)===String(taskId))||{};const over=locGet().rows.find(r=>String(r.id)===String(taskId))||{};const nxt=TaskLib.nextInstance(Object.assign({},base,over));
+    if(nxt&&!TaskLib.sameOpen(locGet().rows,nxt)){const nid="tmp"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);patchTask(nid,Object.assign({},nxt,{id:nid,created_at:now,last_updated:now,_pending:false}))}}
+   return {local:true}}
+  qSet(qGet().concat([{action,localId,taskId,body:action==="task_add"?body:action==="task_done"?{id:taskId,done_by:v.done_by}:{id:taskId}}]));
+  const res=await flushTasks();
+  if(res&&res.unsupported){TASKERR="Tasks needs the Apps Script update (v29). This change was not saved.";return res}
+  if(res&&res.error&&!res.offline){TASKERR=res.error;return res}
+  return res||{ok:true}}finally{TASKBUSY=false}}
+function taskHome(r){if(!r||r.src==="slow"||r.src==="error")return "";
+ if(r.src==="unsupported")return `<button class="card tool" type="button" data-go="tasks">${I("clipboard-list")}<span><b>Tasks need the Apps Script update</b><span class="meta">Redeploy the script (v29) to serve Tasks</span></span>${chip("warn","Pending")}${I("chevron-right","cv")}</button>`;
+ const open=taskRowsOf(r).filter(t=>String(t.status||"open").toLowerCase()!=="done");const me=meName();
+ const mine=me?open.filter(t=>TaskLib.personName(t.assignee).toLowerCase()===me.toLowerCase()):open;
+ const od=mine.filter(t=>TaskLib.isOverdue(t,new Date())).length;const n=mine.length;
+ return `<button class="card tool" type="button" data-go="tasks">${I("clipboard-list")}<span><b>Tasks · ${n} open</b><span class="meta">${esc(me?me+(od?" · "+od+" overdue":" · yours"):"Everyone"+(od?" · "+od+" overdue":""))}</span></span>${n?chip(od?"bad":"warn",String(n)):chip("good","Clear")}${I("chevron-right","cv")}</button>`}
+function taskLine(t,mode){const od=String(t.status||"").toLowerCase()!=="done"&&TaskLib.isOverdue(t,new Date());
+ const sub=[t.station,t.due_date?fmtDay(t.due_date):"",t.due_shift&&ShiftCal.BY[t.due_shift]?ShiftCal.BY[t.due_shift].label:"",t.repeat&&t.repeat!=="none"?t.repeat:"",t._pending?"Pending sync":""].filter(Boolean).join(" · ");
+ const doneBtn=mode==="all"&&String(t.status||"open").toLowerCase()!=="done"?`<button class="btn" type="button" data-taskdone="${esc(t.id)}">Done</button>`:"";
+ const undo=String(t.status||"").toLowerCase()==="done"?`<button class="btn" type="button" data-taskundo="${esc(t.id)}">Undo</button>`:"";
+ const del=mode!=="mine"?`<button class="btn sq" type="button" data-taskdel="${esc(t.id)}" aria-label="Delete ${esc(t.title)}">${I("trash")}</button>`:"";
+ const openAttrs=mode==="mine"?`button type="button" class="row" data-taskdone="${esc(t.id)}"`:`div class="row"`;
+ return `<${openAttrs}><span class="v txt">${esc(t.title)}${t.note?`<small style="white-space:normal">${esc(t.note)}</small>`:""}${sub?`<small>${esc(sub)}</small>`:""}</span>${od?chip("bad","Overdue"):""}${t._pending?chip("warn","Pending"):""}${String(t.status).toLowerCase()==="done"&&t.done_by?chip("good",t.done_by):""}${doneBtn}${undo}${del}</${mode==="mine"?"button":"div"}>`}
+function taskScreen(rows,names){TASKROWS=rows||[];const me=meName();const now=new Date();const open=rows.filter(t=>String(t.status||"open").toLowerCase()!=="done");
+ const mine=TaskLib.sortOpen(open.filter(t=>me&&TaskLib.personName(t.assignee).toLowerCase()===me.toLowerCase()),now);
+ const today=(ShiftCal.etParts(now)||{}).ymd||"";
+ const doneToday=rows.filter(t=>String(t.status||"").toLowerCase()==="done"&&t.done_at&&(ShiftCal.etParts(new Date(t.done_at))||{}).ymd===today);
+ const seg=`<div class="seg" role="tablist"><button type="button" data-taskview="mine" class="${TASKVIEW==="mine"?"on":""}" aria-selected="${TASKVIEW==="mine"}">My tasks</button><button type="button" data-taskview="all" class="${TASKVIEW==="all"?"on":""}" aria-selected="${TASKVIEW==="all"}">All tasks</button></div>`;
+ const sync=qGet().length?`<p class="upd" style="padding:0">${taskLive()?"Saved on this phone · will sync when the Sheet is reachable":"Saved on this phone"}</p>`:(!taskLive()&&locGet().rows.length?`<p class="upd" style="padding:0">Saved on this phone</p>`:"");
+ const err=TASKERR?`<p class="err" role="alert">${esc(TASKERR)}</p>`:"";
+ const who=me?`<p class="meta" style="margin:0">You are <b style="color:var(--ink)">${esc(me)}</b> · <button class="btn" type="button" data-changeme="1" style="min-height:36px">Not you?</button></p>`:"";
+ let body="";
+ if(TASKVIEW==="mine"){if(!me){const pick=names.length?`<div class="quick">${names.map(nm=>`<button class="btn" type="button" data-me="${esc(nm)}">${esc(nm)}</button>`).join("")}</div>`:`<p class="meta">No crew list yet. Type a first name and last initial.</p>`;
+  body=`<div class="card stack"><div class="lbl">Who are you?</div><p class="meta" style="-webkit-line-clamp:4">Pick your name once on this phone. It stays here and is used as the person who tapped done.</p>${pick}<input id="mename" placeholder="First name Last" aria-label="Your name" maxlength="40"><button class="btn primary block" type="button" data-saveme="1">Save my name</button></div>`}
+  else body=(mine.length?`<div class="sec">Open · tap to mark done</div><div class="list">${mine.map(t=>taskLine(t,"mine")).join("")}</div>`:empty("Nothing open for "+me))}
+ else{const od=TaskLib.sortOpen(open.filter(t=>TaskLib.isOverdue(t,now)),now);
+  const by={};open.filter(t=>!TaskLib.isOverdue(t,now)).forEach(t=>{const k=TaskLib.personName(t.assignee)||"Unassigned";(by[k]=by[k]||[]).push(t)});
+  const people=Object.keys(by).sort();
+  const opts=[...new Set([].concat(names,open.map(t=>TaskLib.personName(t.assignee)),me?[me]:[]).filter(Boolean))].sort();
+  if(!TASKSHIFT)TASKSHIFT=(ShiftCal.currentShift(now)||{}).shift||"6a-2p";
+  const shSeg=`<div class="seg">${["6a-2p","2p-10p","10p-6a"].map(s=>`<button type="button" data-taskshift="${s}" class="${TASKSHIFT===s?"on":""}">${esc(ShiftCal.BY[s].label)}</button>`).join("")}</div>`;
+  const rpSeg=`<div class="seg">${[["none","None"],["daily","Daily"],["weekly","Weekly"]].map(([k,l])=>`<button type="button" data-taskrepeat="${k}" class="${TASKREPEAT===k?"on":""}">${l}</button>`).join("")}</div>`;
+  const days=`<div class="quick" id="taskdays"${TASKREPEAT==="weekly"?"":" hidden"}>${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<button type="button" class="btn${TASKDAYS.indexOf(d)>=0?" primary":""}" data-tday="${d}">${d}</button>`).join("")}</div>`;
+  body=`<div class="card stack"><div class="lbl">Add a task</div><input id="tt" placeholder="What needs doing" aria-label="Task title" maxlength="80"><input id="tn" placeholder="Note (optional)" aria-label="Task note" maxlength="280">
+   ${opts.length?`<select id="ta" aria-label="Assignee">${opts.map(nm=>`<option${nm===me?" selected":""}>${esc(nm)}</option>`).join("")}</select>`:`<input id="ta" placeholder="Assignee · first name last initial" aria-label="Assignee" maxlength="40">`}
+   <input id="ts" placeholder="Station (optional)" aria-label="Station" maxlength="40"><input id="tdate" type="date" aria-label="Due date" value="${esc(today)}">
+   ${shSeg}${rpSeg}${days}<button class="btn primary block" type="button" data-taskadd="1">Add task</button></div>`
+   +(od.length?`<div class="sec">Overdue (${od.length})</div><div class="list">${od.map(t=>taskLine(Object.assign({},t,{title:(TaskLib.personName(t.assignee)||"Unassigned")+" · "+t.title}),"all")).join("")}</div>`:"")
+   +people.map(p=>{const list=by[p].slice().sort((a,b)=>(ShiftCal.ORDER[a.due_shift]??9)-(ShiftCal.ORDER[b.due_shift]??9)||String(a.title).localeCompare(String(b.title)));
+    return `<div class="sec">${esc(p)} (${list.length})</div><div class="list">${list.map(t=>taskLine(t,"all")).join("")}</div>`}).join("")
+   +(doneToday.length?`<div class="sec">Done today (${doneToday.length})</div><div class="list">${doneToday.map(t=>taskLine(t,"all")).join("")}</div>`:"");
+ }
+ return backBtn()+`<div class="tip">${I("info")}<span>Check-offs show who tapped done.</span></div>`+seg+who+err+sync+body}
+S.tasks=async()=>{const flushed=await flushTasks();if(flushed&&flushed.unsupported)TASKERR="Tasks needs the Apps Script update (v29). This change was not saved.";
+ const r=await loadT("Tasks");
+ if(r.src==="unsupported")return backBtn()+`<div class="tip">${I("info")}<span>Check-offs show who tapped done.</span></div>`+pendCard("Tasks","Tasks");
+ const crew=await within(ShiftData.load("Crew"),2000,null);const names=((crew&&crew.rows)||[]).filter(isDR).map(x=>TaskLib.personName(x.name||x.first_name)).filter(Boolean);
+ return keyAlert()+taskScreen(taskRowsOf(r),[...new Set(names)].sort())};
 
 // ---- Tools ----
 const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],["inventory","Inventory","package","Counts, low stock, order list"],["waste","Waste log","trash","Quick log, daily totals"],["equipment","Equipment","wrench","Issues and fixes"],["crewnotes","Crew notes","notebook","Training, praise, call-outs"],["cover","Who can cover?","users","Suggest crew for an open shift"],["prerush","Pre-rush checklist","timer","What to check before each rush"],["outofstock","Out of stock","package","QSRSoft out-of-stock list"]];
@@ -651,7 +818,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
 let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
-const APPVER="v42";
+const APPVER="v43";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -671,8 +838,8 @@ S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
  <button class="btn danger block" data-act="clearkey">Remove key from this phone</button></div>
  <div class="ver" id="lastchk">${chkTxt()}</div><div class="ver" id="ver">Shift Hub ${APPVER}${await swCache()}</div>`};
 
-const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",cover:"Who can cover?",outofstock:"Out of stock",prerush:"Pre-rush",ot:"Potential OT",settings:"Settings"};
-const TABOF={ot:"home",outofstock:"tools",prerush:"tools",cover:"whoson",floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools"};
+const TITLE={home:"Home",whoson:"Who's on",labor:"Labor",rushes:"Rushes",speed:"Speed",guest:"Guest",tools:"Tools",floor:"Floor",inventory:"Inventory",waste:"Waste log",equipment:"Equipment",crewnotes:"Crew notes",cover:"Who can cover?",outofstock:"Out of stock",prerush:"Pre-rush",ot:"Potential OT",goals:"Shift goal",grades:"Shift grades",tasks:"Tasks",settings:"Settings"};
+const TABOF={ot:"home",outofstock:"tools",prerush:"tools",cover:"whoson",floor:"tools",inventory:"tools",waste:"tools",equipment:"tools",crewnotes:"tools",goals:"home",grades:"home",tasks:"home"};
 // Position picker sheet (replaces prompt()).
 let POSOPTS=[];
 function closeSheet(){const s=$("#sheet");if(s)s.remove()}
@@ -697,7 +864,7 @@ const VIEW={};let seq=0,shown="",DEFER="";
 const editing=()=>{const a=document.activeElement;if(a&&app.contains(a)&&a.matches("input:not([type=checkbox]),textarea"))return true;
  return [...app.querySelectorAll("input:not([type=checkbox]):not([type=password]),textarea")].some(i=>i.value!==i.defaultValue)};
 app.addEventListener("focusout",()=>setTimeout(()=>{if(DEFER&&DEFER===cur&&!editing()){DEFER="";show(cur)}},150));
-const FOCUS={cover:["Crew","Skills","DaysOff","WeekHours","Availability","SchoolCal","Roster","Meta"],home:["Brief","OutOfStock","OTRisk","PreRush","Roster","Meta"],outofstock:["OutOfStock","Meta"],prerush:["PreRush","Meta"],ot:["OTRisk","Brief","Meta"],whoson:["Roster","Meta"],labor:["Labor","Brief","Meta"],rushes:["Events","Speed","Meta"],speed:["Speed","Meta"],guest:["SMG","Comments","Brief","Meta"],tools:["Brief","Meta"]};
+const FOCUS={cover:["Crew","Skills","DaysOff","WeekHours","Availability","SchoolCal","Roster","Meta"],home:["Brief","OutOfStock","OTRisk","PreRush","ShiftGoals","ShiftGrades","Tasks","Roster","Meta"],goals:["ShiftGoals","Meta"],grades:["ShiftGrades","Meta"],tasks:["Tasks","Crew","Meta"],outofstock:["OutOfStock","Meta"],prerush:["PreRush","Meta"],ot:["OTRisk","Brief","Meta"],whoson:["Roster","Meta"],labor:["Labor","Brief","Meta"],rushes:["Events","Speed","Meta"],speed:["Speed","Meta"],guest:["SMG","Comments","Brief","Meta"],tools:["Brief","Meta"]};
 const PV=new Set(["floor:positions","floor:breaks","floor:checklist","floor:fixes","floor:handoff","inventory","waste","equipment","crewnotes"]);
 const pvGet=vk=>{try{return PV.has(vk)?localStorage.getItem("shifthub_view_"+vk):null}catch(e){return null}};
 const pvSet=(vk,h)=>{if(!PV.has(vk))return;clearTimeout(pvSet[vk]);pvSet[vk]=setTimeout(()=>{try{localStorage.setItem("shifthub_view_"+vk,h)}catch(e){}},500)};
@@ -712,7 +879,7 @@ function paint(h){const a=document.activeElement,fid=a&&app.contains(a)&&a.id?a.
  app.querySelectorAll("details").forEach(d=>{const su=d.querySelector("summary");if(su&&open.has(su.textContent))d.open=true});
  for(const id in keep){const el=document.getElementById(id);if(el&&el.value===el.defaultValue)el.value=keep[id]}
  if(fid&&document.activeElement!==document.getElementById(fid)){const el=document.getElementById(fid);if(el){el.focus({preventScroll:true});if(ss)try{el.setSelectionRange(ss[0],ss[1])}catch(e){}}}}
-async function show(s,o={}){try{window.FloorSync&&window.FloorSync()}catch(e){}const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,moved=shown!==vk;if(s!==cur&&!["outofstock","prerush","ot","settings"].includes(cur))FROM=cur;cur=s;shown=vk;
+async function show(s,o={}){try{window.FloorSync&&window.FloorSync()}catch(e){}const my=++seq,vk=s==="floor"?"floor:"+floorSub:s,moved=shown!==vk;if(s!==cur&&!["outofstock","prerush","ot","settings","goals","grades","tasks"].includes(cur))FROM=cur;cur=s;shown=vk;
  try{ShiftData.setFocus(s==="floor"?[floorSub,"Roster","Brief","Meta"]:FOCUS[s]||[s,"Brief","Meta"])}catch(e){}$("#title").textContent=TITLE[s];
  document.querySelectorAll("#tabs button").forEach(b=>{const on=b.dataset.s===(TABOF[s]||s);b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
  if(s==="cover")delete VIEW[vk];if(!o.fresh&&!VIEW[vk]&&s!=="cover"){const pv=pvGet(vk);if(pv)VIEW[vk]=pv}
@@ -731,6 +898,19 @@ $("#gear").innerHTML=I("settings");
 $("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)show(b.dataset.s)};
 app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]");if(rt){ShiftData.reset();show(rt.dataset.retry,{fresh:1});return}
  const go=e.target.closest("[data-go]");if(go){show(go.dataset.go);return}
+ const tv=e.target.closest("[data-taskview]");if(tv){TASKVIEW=tv.dataset.taskview;show("tasks");return}
+ const tsh=e.target.closest("[data-taskshift]");if(tsh){TASKSHIFT=tsh.dataset.taskshift;tsh.parentElement.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===tsh));return}
+ const trp=e.target.closest("[data-taskrepeat]");if(trp){TASKREPEAT=trp.dataset.taskrepeat;trp.parentElement.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===trp));const days=document.getElementById("taskdays");if(days)days.hidden=TASKREPEAT!=="weekly";return}
+ const tdy=e.target.closest("[data-tday]");if(tdy){const d=tdy.dataset.tday,i=TASKDAYS.indexOf(d);if(i>=0)TASKDAYS.splice(i,1);else TASKDAYS.push(d);tdy.classList.toggle("primary",TASKDAYS.indexOf(d)>=0);return}
+ const meb=e.target.closest("[data-me]");if(meb){try{localStorage.setItem(MEK,TaskLib.personName(meb.dataset.me))}catch(err){}show("tasks");return}
+ if(e.target.closest("[data-changeme]")){try{localStorage.removeItem(MEK)}catch(err){}show("tasks");return}
+ if(e.target.closest("[data-saveme]")){const nm=TaskLib.personName(($("#mename")||{}).value||"");if(!nm){const el=$("#mename");if(el)el.focus();return}try{localStorage.setItem(MEK,nm)}catch(err){}show("tasks");return}
+ const tadd=e.target.closest("[data-taskadd]");if(tadd){const assignee=($("#ta")||{}).value||"";const rep=TASKREPEAT==="weekly"?"weekly:"+(TASKDAYS.length?TASKDAYS.slice().sort((a,b)=>["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(a)-["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(b)).join(","):"Mon"):TASKREPEAT;
+  const v=TaskLib.validateAdd({title:($("#tt")||{}).value,note:($("#tn")||{}).value,assignee,station:($("#ts")||{}).value,due_date:($("#tdate")||{}).value,due_shift:TASKSHIFT,repeat:rep,created_by:meName()});
+  if(!v.ok){TASKERR=v.error;show("tasks");return}TASKERR="";await taskAct("task_add",v.row);show("tasks",{force:1});return}
+ const tdn=e.target.closest("[data-taskdone]");if(tdn){if(!meName()){TASKVIEW="mine";TASKERR="Pick your name first. Check-offs show who tapped done.";show("tasks");return}await taskAct("task_done",{id:tdn.dataset.taskdone,done_by:meName()});show("tasks",{force:1});return}
+ const tun=e.target.closest("[data-taskundo]");if(tun){await taskAct("task_undo",{id:tun.dataset.taskundo});show("tasks",{force:1});return}
+ const tdl=e.target.closest("[data-taskdel]");if(tdl){if(!confirm("Delete this task?"))return;await taskAct("task_delete",{id:tdl.dataset.taskdel});show("tasks",{force:1});return}
  const cf=e.target.closest("[data-cmtf]");if(cf){cmtF=cf.dataset.cmtf;const y=scrollY;await show("guest");scrollTo(0,y);return}
  const cdd=e.target.closest("[data-cmtd]");if(cdd){cmtDays=+cdd.dataset.cmtd;const y=scrollY;await show("guest");scrollTo(0,y);return}
  const wh=e.target.closest("[data-who]");if(wh){whoDay=+wh.dataset.who;show("whoson");return}
@@ -781,12 +961,12 @@ window.addEventListener("shifthub:floorsync",()=>{if(!document.querySelector("#a
 let LASTPULL=Date.now();const pull=(why)=>{if(document.hidden||!ShiftData.Key.get()||Date.now()-LASTPULL<20000)return;LASTPULL=Date.now();TRIG=why||"refresh";meta=null;metaAt=0;ShiftData.reset();
  // v38: always do a real network refetch of Meta (even on Settings/Tools screens that load no data tab), so every trigger re-checks.
  ShiftData.load("Meta",{fresh:1}).catch(()=>{});
- if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot"].includes(cur))show(cur)};
+ if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot","goals","grades","tasks"].includes(cur))show(cur)};
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull("visible")});window.addEventListener("focus",()=>pull("focus"));window.addEventListener("pageshow",e=>{if(e.persisted)pull("pageshow")});window.addEventListener("online",()=>pull("online"));
 setInterval(()=>{LASTPULL=0;pull("3-min timer")},180000);
 // v37: Settings "Last checked" (any live refetch completing, even with no data change).
 window.addEventListener("shifthub:checked",e=>{CHK={at:ShiftData.status.checkedAt,why:(e.detail&&e.detail.why)||TRIG};const el=document.getElementById("lastchk");if(el)el.textContent=chkTxt()});
-window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot"].includes(cur))show(cur)});
+window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot","goals","grades","tasks"].includes(cur))show(cur)});
 app.addEventListener("input",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
 app.addEventListener("change",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const m=tmin(e.target.value);if(!isNaN(m))e.target.value=ampm(m)}if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});
 setSrc(false);show("home");

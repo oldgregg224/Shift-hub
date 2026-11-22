@@ -66,7 +66,7 @@ details.more summary::-webkit-details-marker{display:none}
 details[open]>summary .ic.cv{transform:rotate(180deg)}
 .cv{color:var(--ink-3);width:20px;height:20px}
 /* buttons + inputs */
-.btn{min-height:var(--tap);border-radius:var(--r-btn);font:600 16px/22px var(--font);padding:0 16px;border:1px solid var(--line);background:var(--surface);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn{min-height:var(--tap);border-radius:var(--r-btn);font:600 16px/22px var(--font);padding:0 16px;border:1px solid var(--line);background:var(--surface);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:6px;scroll-margin-bottom:calc(var(--tabbar) + 24px)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.danger{color:var(--bad)}.btn.block{width:100%}
 .btn.sq{width:var(--tap);padding:0;flex:none}
@@ -98,6 +98,17 @@ input:focus,textarea:focus,button:focus-visible,summary:focus-visible{outline:2p
 .tm{font:600 15px/20px var(--font);color:var(--ink-2);white-space:nowrap}
 .card .row+.row{border-top:1px solid var(--line)}
 .card.tool{display:flex;align-items:center;gap:14px;min-height:72px}.card.tool>.ic:first-child{color:var(--accent)}.card.tool>span{flex:1;min-width:0}.card.tool b{display:block;font-size:17px}
+.track{font:700 22px/28px var(--font);margin-top:4px}
+.cmp{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line);font:600 16px/22px var(--font)}
+.cmp .k{flex:1;min-width:0;font-weight:500;color:var(--ink-2)}
+.cmp .k small{display:block;font:500 12px/16px var(--font);color:var(--ink-3);font-weight:500}
+.cmp .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cmp .num.good{color:#15803D}.cmp .num.warn{color:#854D0E}.cmp .num.bad{color:#B91C1C}
+.grade-letter{font:700 72px/76px var(--font);letter-spacing:-.04em;margin-top:4px}
+.grade-letter.good{color:#15803D}.grade-letter.warn{color:#A16207}.grade-letter.bad{color:#B91C1C}.grade-letter.neutral{color:var(--ink-2)}
+.quick[hidden]{display:none}
+button.row{width:100%;border:0;background:none;text-align:left;font:inherit;color:inherit;cursor:pointer}
+select{min-height:var(--tap);font:400 16px/22px var(--font);border-radius:var(--r-btn);border:1px solid var(--line);padding:12px;width:100%;background:var(--surface);color:var(--ink)}
 .quick{display:flex;flex-wrap:wrap;gap:8px}.quick .btn{flex:1 1 30%;padding:0 8px}
 .seg[data-group] button{min-height:44px;white-space:normal;line-height:15px}
 .upd:empty{display:none}
