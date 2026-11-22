@@ -65,4 +65,31 @@ no(fa("Ana R").warn,/week hours not in Sheet/,"known week has no missing-hours w
 r=base(grill("2026-11-06",t(16),t(22)),[m16],[k16],[HW("Cara M",10,26)]);has(r.no[0].why,/32 of 30 hrs/,"16-17 cap from worked");
 r=base(grill("2026-11-03",t(16),t(22)),[C("Ana R")],[K("Ana R","GRILL REGULAR MENU",3)],[HW("Ana R",30,30,"2026-11-08")]);has(r.ok[0].warn,/week hours not in Sheet/,"other week ignored -> warning");eq(SF.hoursTxt(r.ok[0]),"","no hours text when row missing");
 r=base(grill("2026-11-03",t(16),t(22)),[C("Ana R")],[K("Ana R","GRILL REGULAR MENU",3)],[HW("Ana R","","")]);has(r.ok[0].warn,/week hours not in Sheet/,"blank row -> warning");
+// 11. Pending time off is a caution (dated), including M/D/YYYY. Availability edits are not time off.
+const ax=C("Alexis A",{minor:"Y",age_band:"16-17"}),kx=K("Alexis A","GRILL REGULAR MENU",3);
+r=base(grill("2026-11-13",t(16),t(20)),[ax],[kx],[],{daysOff:[{row_type:"DATA",name:"Alexis A",date:"11/13/2026",type:"time_off_pending"}]});
+eq(r.ok.map(o=>o.name),["Alexis A"],"pending time off does not exclude");
+has(r.ok[0].warn,/pending time off 2026-11-13/,"Alexis pending time off on 2026-11-13");
+r=base(grill("2026-11-13",t(9),t(15)),[ax],[kx],[],{daysOff:[{row_type:"DATA",name:"Alexis A",date:"2026-11-13",type:"time_off_pending"}]});
+has(r.no[0].why,/during school hours/,"school hours still exclude");
+has(r.no[0].warn,/pending time off/,"pending caution still shows on a can't-cover card");
+r=base(grill("2026-11-13",t(16),t(20)),[C("Ben T"),ax],[K("Ben T","GRILL REGULAR MENU",3),kx],[],{daysOff:[{row_type:"DATA",name:"Ben T",date:"2026-11-13",type:"availability_approved"},{row_type:"DATA",name:"Alexis A",date:"2026-11-22",type:"availability_pending"}]});
+eq(!!r.ok.find(o=>o.name==="Ben T"),true,"availability_approved is not approved time off");
+no(r.ok.find(o=>o.name==="Ben T").why,/time off/,"availability approved has no time-off reason");
+no((r.ok.find(o=>o.name==="Alexis A")||{warn:[]}).warn,/pending/,"availability pending on another date is ignored");
+r=base(grill("2026-11-22",t(16),t(20)),[ax],[kx],[],{daysOff:[{row_type:"DATA",name:"Alexis A",date:"2026-11-22",type:"availability_pending"}]});
+has(r.ok[0].warn,/pending availability change/,"availability pending is its own caution");
+no(r.ok[0].warn,/pending time off/,"availability pending is not called time off");
+// 12. Worked hours on the sheet's week only. A current-week row does not fill a past week.
+r=base(grill("2026-11-13",t(16),t(20)),[ax],[kx],[HW("Alexis A",12.5,4,"2026-11-22")]);
+has(r.ok[0].warn,/week hours not in Sheet/,"week of 11/22 does not apply to 11/13");
+eq(r.ok[0].basis,"","past week with no row has no basis");
+r=base(grill("2026-11-22",t(17),t(22)),[C("Sophia F"),C("Sanuj W"),C("Christian M")],[K("Sophia F","GRILL REGULAR MENU",3),K("Sanuj W","GRILL REGULAR MENU",3),K("Christian M","GRILL REGULAR MENU",3)],[HW("Sophia F",37.5,2.1,"2026-11-22"),HW("Sanuj W",30,2.07,"2026-11-22"),HW("Christian M",7,"","2026-11-22")]);
+const f2=nm=>r.ok.concat(r.no).find(o=>o.name===nm);
+eq([f2("Sophia F").basis,f2("Sophia F").wk],["worked",2.1],"worked hours used for the cap");
+eq(SF.hoursTxt(f2("Sophia F")),"worked 2.1 h · scheduled 37.5 h","both worked and scheduled shown");
+eq(SF.hoursTxt(f2("Sanuj W")),"worked 2.1 h · scheduled 30 h","2.07 rounds in the label, math uses worked");
+eq(f2("Sanuj W").wk,2.07,"worked value kept");
+eq(SF.hoursTxt(f2("Christian M")),"scheduled 7 h","blank worked stays scheduled");
+no(f2("Sophia F").warn,/week hours not in Sheet/,"a worked row is not 'not in Sheet'");
 console.log(`${n-f}/${n} passed`);process.exit(f?1:0);

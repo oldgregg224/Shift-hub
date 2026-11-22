@@ -78,7 +78,8 @@ const failed=t=>fail[t]||null,scriptBroken=()=>st.script==="broken",unsupported=
 async function ping(){const u=new URL(url());u.searchParams.set("action","ping");const r=await fetchT(u,{redirect:"follow",cache:"no-store"},15000);
  const txt=await r.text();let j;try{j=JSON.parse(txt)}catch(e){if(/Script function not found/i.test(txt)){st.script="broken";return{ok:false,error:"deployed script has no doGet"}}return{ok:false,error:"not JSON (HTTP "+r.status+")"}}
  if(!j.ok)return{ok:false,version:"",error:j.error==="bad key"?"script is older than v20 (no ping)":(j.error||"no ping")};
- st.script="ok";st.ver=j.version||"";const was=Object.keys(unsup);
+ st.script="ok";st.ver=j.version||"";st.checkedAt=Date.now();try{window.dispatchEvent(new CustomEvent("shifthub:checked",{detail:{tab:"ping",why:"script check"}}))}catch(_){}
+ const was=Object.keys(unsup);
  for(const k of was)delete unsup[k];try{Object.keys(sessionStorage).filter(k=>k.startsWith("shifthub_unsup_")).forEach(k=>sessionStorage.removeItem(k))}catch(_){}
  was.forEach(t=>{refresh(t).then(()=>emit(t),()=>emit(t))});return{ok:true,version:j.version||""}}
 if(url())setTimeout(()=>ping().catch(()=>{}),0);
