@@ -132,13 +132,132 @@ eq(TL.isOverdue(due("2026-11-22","6a-2p","done"),ET("2026-11-22T19:00:00Z")),fal
 const ordered=TL.sortOpen([due("2026-11-23","6a-2p"),due("2026-11-22","6a-2p"),due("2026-11-22","2p-10p")],ET("2026-11-22T19:00:00Z"));
 eq(ordered.map(t=>t.due_date+" "+t.due_shift),["2026-11-22 6a-2p","2026-11-22 2p-10p","2026-11-23 6a-2p"],"overdue first, then date and shift");
 
-// 8. Code.gs v29: tabs, version, and the task write whitelist (plain JS block, no Apps Script APIs).
+// 8. Hour-by-hour coach. Read by header name. Blank coach fields hide; the goal card still works.
+const coach=SC.viewGoal({"Do This Hour":"Sales are behind this hour. Keep both windows open. Send someone on break only after the line is gone.","Do Next Hour":"Use the lull to restock fries and cups. Have the lunch grill person in place.","Next Hour":"3 PM","Hours Per Hour Left":"2.4","Next Hour Need Hrs":"6.5","Next Hour Proj Sales":"420","Pace Cap Hrs":"4",shift:"6a-2p",date:"2026-11-22",manager:"Travis",hours_left:"21.5",on_track:"On track",speed_focus:"Second window"});
+eq(coach.doThisHour,"Sales are behind this hour. Keep both windows open. Send someone on break only after the line is gone.","this hour note by header name");
+eq(coach.doNextHour,"Use the lull to restock fries and cups. Have the lunch grill person in place.","next hour note by header name");
+eq(coach.nextHourLabel,"3p","3 PM becomes 3p");
+eq([coach.perHourLeft,coach.nextHourNeed,coach.nextHourSales,coach.paceCap,coach.hoursLeft],[2.4,6.5,420,4,21.5],"coach numbers by header name");
+eq(coach.speedFocus,"Second window","speed focus still on the goal");
+eq(SC.coachParts(coach).nextLabel,"Next hour (3p)","next card label");
+eq(SC.coachParts(coach).stats,["hoursLeft","perHourLeft","nextHourNeed","nextHourSales","paceCap"],"stats under the coach cards");
+const noPace=SC.viewGoal(row({do_this_hour:"Keep two at the window.",do_next_hour:"",next_hour:"",hours_per_hour_left:"",next_hour_need_hrs:"1",next_hour_proj_sales:"",pace_cap_hrs:"",hours_left:""}));
+eq(SC.coachParts(noPace).thisHour,"Keep two at the window.","this hour card stays");
+eq(SC.coachParts(noPace).nextLabel,"","blank next hour card hides");
+eq(SC.coachParts(noPace).stats,["nextHourNeed"],"blank coach fields hide");
+const noCoach=SC.viewGoal(row({do_this_hour:"",do_next_hour:"—",next_hour:"n/a",hours_per_hour_left:"",next_hour_need_hrs:"",next_hour_proj_sales:"",pace_cap_hrs:"",hours_left:"12",sales_proj:"2400"}));
+eq(noCoach.hasCoach,false,"empty coach falls back to the goal card");
+eq(SC.coachParts(noCoach),null,"no coach parts when every new column is blank");
+eq(noCoach.hoursLeft,12,"hours left still on the goal when there is no coach");
+eq(SC.hourTag("15:00"),"3p","24h next hour");
+eq(SC.hourTag("10a"),"10a","sheet short hour kept");
+
+// 9. Per-manager grade rows. Most hours pick the parent shift. 5a-1p is mostly 6a-2p, not the previous night.
+eq(SC.isMgrShift("mgr 2p-9p"),true,"mgr prefix");
+eq(SC.isMgrShift("Mgr 5a-1p"),true,"Mgr prefix");
+eq(SC.isMgrShift("6a-2p"),false,"regular shift is not mgr");
+eq(SC.normShift("mgr 2p-9p"),"","mgr shift is not a regular shift id");
+eq(SC.normShift("mgr 6a-2p"),"","mgr 6a-2p is not the morning shift");
+eq(SC.mgrHours("mgr 2p-9p"),"2p–9p","manager hours label");
+eq(SC.mgrHours("mgr 5a-1p"),"5a–1p","early manager hours label");
+eq(SC.mgrParent("2026-11-22","mgr 2p-9p"),{date:"2026-11-22",shift:"2p-10p"},"2p-9p sits under 2p-10p");
+eq(SC.mgrParent("2026-11-22","mgr 5a-1p"),{date:"2026-11-22",shift:"6a-2p"},"5a-1p is mostly 6a-2p, not the previous night");
+eq(SC.mgrParent("2026-11-23","mgr 4a-5a"),{date:"2026-11-22",shift:"10p-6a"},"hours before 6a sit on the previous night");
+eq(SC.mgrParent("2026-11-22","mgr 9p-5a"),{date:"2026-11-22",shift:"10p-6a"},"9p-5a is mostly that night's 10p-6a");
+eq(SC.mgrParent("2026-11-22","mgr 10a-6p").shift,"6a-2p","a tie goes to the shift that contains the start");
+eq(SC.mgrParent("2026-11-22","mgr"),null,"unparsed mgr shift does not crash");
+eq(SC.mgrHours("mgr"),"","unparsed mgr has no hours label");
+const mixedGrades=[
+ {date:"2026-11-22",shift:"mgr 2p-9p",manager:"Hana L",grade:"A"},
+ {date:"2026-11-22",shift:"2p-10p",manager:"Hana Shift",grade:"C"},
+ {date:"2026-11-22",shift:"6a-2p",manager:"Travis",grade:"B"},
+ {date:"2026-11-22",shift:"mgr 5a-1p",manager:"Ian C",grade:"B"},
+ {date:"2026-11-22",shift:"10p-6a",manager:"Gus K",grade:"B"},
+ {date:"2026-11-22",shift:"mgr 9p-5a",manager:"Gus K",grade:"A"},
+ {date:"2026-11-23",shift:"mgr 4a-5a",manager:"Nia P",grade:"C"},
+ {date:"2026-11-22",shift:"not a shift",manager:"Zed Q",grade:"D"},
+ {date:"2026-11-10",shift:"mgr 2p-9p",manager:"Old",grade:"F"}];
+const mixedRecent=SC.recentGrades(mixedGrades,ET("2026-11-23T15:00:00Z"),7);
+eq(mixedRecent.map(g=>g.mgr?"mgr:"+g.mgrHours:(g.shift||g.rawShift)),["mgr:4a–5a","10p-6a","mgr:9p–5a","2p-10p","mgr:2p–9p","6a-2p","mgr:5a–1p","not a shift"],"mgr rows sort with their parent shift and do not crash");
+eq(mixedRecent.filter(g=>g.date==="2026-11-22"&&g.parentShift==="2p-10p").map(g=>g.mgr),[false,true],"regular 2p-10p stays ahead of its manager row");
+const groups=SC.gradeGroups(mixedGrades,ET("2026-11-23T15:00:00Z"),7);
+const g22=sh=>groups.find(g=>g.date==="2026-11-22"&&g.shift===sh);
+eq(groups.map(g=>g.date+" "+g.shift),["2026-11-22 10p-6a","2026-11-22 2p-10p","2026-11-22 6a-2p","2026-11-22 "],"newest parent shift first; unknown shift last");
+eq(g22("2p-10p").grades.map(g=>g.manager),["Hana Shift"],"regular card");
+eq(g22("2p-10p").managers.map(g=>g.manager+" "+g.mgrHours),["Hana L 2p–9p"],"indented manager under 2p-10p");
+eq(g22("6a-2p").managers.map(g=>g.manager),["Ian C"],"5a-1p under 6a-2p");
+eq(g22("10p-6a").managers.map(g=>g.manager),["Gus K","Nia P"],"same-night 9p-5a then next morning's early hours");
+eq(g22("10p-6a").managers[1].date,"2026-11-23","early hours keep their own row date");
+eq(groups[groups.length-1].grades.map(g=>g.manager),["Zed Q"],"unparsed shift still shows");
+ok(!mixedRecent.some(g=>g.manager==="Old"),"old mgr row stays outside 7 days");
+const earlyOnly=SC.gradeGroups([{date:"2026-11-17",shift:"mgr 4a-5a",manager:"Nia P",grade:"B"}],ET("2026-11-23T15:00:00Z"),7);
+eq([earlyOnly[0].date,earlyOnly[0].shift,earlyOnly[0].managers[0].manager],["2026-11-16","10p-6a","Nia P"],"a row inside the window can sit on the previous night");
+
+// 10. Mgr rows are ignored when picking the current shift or a freshness stamp.
+const mgrGoals=[
+ row({shift:"2p-10p",manager:"Hana L",start:"14:00",end:"22:00",sales_so_far:"100",live_updated:"2026-11-22T15:00:00Z"}),
+ row({shift:"mgr 2p-9p",manager:"Partial",start:"14:00",end:"21:00",sales_so_far:"999",live_updated:"2026-11-22T18:00:00Z"})];
+eq(SC.fld(SC.pickCurrent(mgrGoals,ET("2026-11-22T19:00:00Z")),"manager"),"Hana L","current shift skips the mgr row");
+eq(SC.pickCurrent([row({shift:"mgr 6a-2p",manager:"Ian C",start:"06:00",end:"14:00"})],ET("2026-11-22T14:30:00Z")),null,"a mgr row is never the current shift");
+eq(SC.fld(SC.pickNamed(mgrGoals,"2026-11-22","2p-10p"),"manager"),"Hana L","named shift skips mgr");
+eq(SC.newestStamp(mgrGoals,"live_updated").v,"2026-11-22T15:00:00Z","freshness ignores the mgr stamp");
+eq(SC.goalState(mgrGoals,ET("2026-11-22T19:00:00Z")).cur.manager,"Hana L","goal card uses the regular row");
+
+// 11. Grade adjustments and callouts. Names stay first + last initial. No guest fields.
+const adj=SC.viewGrade({date:"2026-11-22",shift:"2p-10p",manager:"Hana L",grade:"C",Callouts:"2","Short Hours Excused":"3.5",Adjusted_Note:"Two people called out. The grade uses the other hours."});
+eq(SC.calloutLine(adj),"Callouts: 2 · 3.5 short hours excused","callout line");
+eq(adj.adjustedNote,"Two people called out. The grade uses the other hours.","adjusted note by header name");
+eq(SC.calloutLine(SC.viewGrade({date:"2026-11-22",shift:"6a-2p",callouts:"",short_hours_excused:"",adjusted_note:""})),"","blank adjustment hides");
+eq(SC.calloutLine(SC.viewGrade({date:"2026-11-22",shift:"6a-2p",short_hours_excused:"1"})),"1 short hour excused","one hour");
+eq(SC.calloutLine(SC.viewGrade({date:"2026-11-22",shift:"10p-6a",callouts:"1"})),"Callouts: 1","callouts only");
+const callRows=[
+ {row_type:"DATA",date:"2026-11-22",shift:"2p-10p",name:"Ana R",role:"Crew",sched_start:"14:00",sched_end:"22:00",source:"Harri",note:"Guest was upset about fries"},
+ {row_type:"DATA",date:"2026-11-22",shift:"6 AM - 2 PM",name:"Ben T",role:"Grill",sched_start:"06:00",sched_end:"14:00",note:"Called ahead"},
+ {row_type:"DATA",date:"2026-11-22",shift:"mgr 2p-9p",name:"Maria Lopez",role:"Window",sched_start:"14:00",sched_end:"21:00",note:"Left early"},
+ {row_type:"DATA",date:"2026-11-21",shift:"2p-10p",name:"Cy D",role:"Crew",sched_start:"14:00",sched_end:"18:00"},
+ {row_type:"HEADER",date:"2026-11-22",shift:"2p-10p",name:"Example",role:"Crew",sched_start:"14:00",sched_end:"22:00"}];
+const listed=SC.calloutsFor(callRows,adj);
+eq(listed.map(c=>c.name),["Ana R"],"regular card lists that date and shift");
+eq(Object.keys(listed[0]).sort(),["end","name","role","start"],"callout has name, role, and times only");
+ok(!/guest|fries|Harri/i.test(JSON.stringify(listed)),"guest text and source stay off the card");
+eq(SC.calloutsFor(callRows,SC.viewGrade({date:"2026-11-22",shift:"6a-2p"})).map(c=>c.name),["Ben T"],"shift alias matches");
+eq(SC.calloutsFor(callRows,SC.viewGrade({date:"2026-11-22",shift:"mgr 2p-9p",manager:"Hana L"})).map(c=>c.name),["Maria L"],"mgr card matches its own shift and shortens a full name");
+eq(SC.calloutsFor(callRows,SC.viewGrade({date:"2026-11-22",shift:"10p-6a"})),[],"other shift has no callouts");
+
+// 12. Sample rows carry the new columns, per-manager grades, and callouts.
+const sample=name=>JSON.parse(fs.readFileSync(path.join(__dirname,"..","data","sample",name),"utf8"));
+const goalSample=sample("shiftgoals.json");
+ok(goalSample.some(r=>String(r.do_this_hour||"").trim()&&String(r.do_next_hour||"").trim()&&String(r.next_hour||"").trim()),"sample goals have coach notes");
+ok(goalSample.some(r=>String(r.pace_cap_hrs||"").trim())&&goalSample.some(r=>!String(r.pace_cap_hrs||"").trim()),"sample pace cap can be blank");
+eq(SC.viewGoal(goalSample.find(r=>r.shift==="6a-2p")).hasCoach,true,"sample morning row coaches");
+const gradeSample=sample("shiftgrades.json");
+ok(gradeSample.some(r=>SC.isMgrShift(r.shift)),"sample grades include a mgr row");
+ok(gradeSample.some(r=>String(r.callouts||"").trim()&&String(r.short_hours_excused||"").trim()&&String(r.adjusted_note||"").trim()),"sample grades have adjustment columns");
+const callSample=sample("callouts.json");
+["date","shift","name","role","sched_start","sched_end","source","note","last_updated"].forEach(k=>ok(callSample.some(r=>k in r),"callouts sample has "+k));
+ok(callSample.every(r=>!/guest/i.test(JSON.stringify(r))),"sample callouts have no guest info");
+ok(callSample.every(r=>SC.shortName(r.name)===r.name),"sample callout names are already short");
+const preSample=sample("prerush.json");
+ok(preSample.every(r=>/^\d{4}-\d{2}-\d{2}\s+\S+/.test(String(r.shift||""))),"sample pre-rush rows carry a shift label");
+
+// 13. Code.gs v30: Callouts is readable, PreRushBank is not, task writes stay on Tasks.
 const gs=fs.readFileSync(path.join(__dirname,"..","apps-script","Code.gs"),"utf8");
-ok(/const VERSION='v29';/.test(gs),"Code.gs VERSION v29");
+ok(/const VERSION='v30';/.test(gs),"Code.gs VERSION v30");
 const tabs=/const TABS=\[([^\]]+)\]/.exec(gs);ok(!!tabs,"TABS present");
 const tabList=tabs[1].split(",").map(s=>s.replace(/['\s]/g,""));
-["Brief","Labor","Events","Speed","SMG","Roster","Comments","Meta","Coverage","Crew","Skills","Availability","DaysOff","WeekHours","SchoolCal","OutOfStock","PreRush","OTRisk","ShiftGoals","ShiftGrades","Tasks"].forEach(t=>ok(tabList.indexOf(t)>=0,"TABS has "+t));
+["Brief","Labor","Events","Speed","SMG","Roster","Comments","Meta","Coverage","Crew","Skills","Availability","DaysOff","WeekHours","SchoolCal","OutOfStock","PreRush","OTRisk","ShiftGoals","ShiftGrades","Callouts","Tasks"].forEach(t=>ok(tabList.indexOf(t)>=0,"TABS has "+t));
+ok(tabList.indexOf("PreRushBank")<0,"PreRushBank is not a tab");
+ok(!/PreRushBank/.test(gs),"Code.gs does not read PreRushBank");
 ok(!/SHIFTHUB_KEY\s*=\s*['"][^'"]+['"]/.test(gs),"no key literal");
+const ver=JSON.parse(fs.readFileSync(path.join(__dirname,"..","version.json"),"utf8"));
+eq(ver.v,"v44","app version v44");
+const sw=fs.readFileSync(path.join(__dirname,"..","sw.js"),"utf8");
+ok(/shifthub-v44/.test(sw),"service worker cache v44");
+ok(/"callouts"/.test(sw),"service worker caches callouts");
+const app=fs.readFileSync(path.join(__dirname,"..","js","app.js"),"utf8");
+ok(/const APPVER="v44"/.test(app),"in-app version v44");
+ok(!/PreRushBank/.test(app),"app does not read PreRushBank");
+ok(/noindex/.test(fs.readFileSync(path.join(__dirname,"..","index.html"),"utf8")),"noindex stays");
 const block=/\/\*TASKLIB_BEGIN\*\/([\s\S]*?)\/\*TASKLIB_END\*\//.exec(gs);
 ok(!!block,"task lib block");
 let GS=null;if(block){GS=new Function(block[1]+"\nreturn TaskLib;")()}

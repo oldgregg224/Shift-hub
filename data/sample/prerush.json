@@ -1,6 +1,7 @@
 [
  {
   "row_type": "DATA",
+  "shift": "2026-11-22 6a-2p",
   "rush": "breakfast",
   "check_by": "06:30",
   "station": "Grill",
@@ -13,6 +14,7 @@
  },
  {
   "row_type": "DATA",
+  "shift": "2026-11-22 6a-2p",
   "rush": "breakfast",
   "check_by": "06:45",
   "station": "Drive Thru",
@@ -25,6 +27,7 @@
  },
  {
   "row_type": "DATA",
+  "shift": "2026-11-22 6a-2p",
   "rush": "lunch",
   "check_by": "10:45",
   "station": "Fries",
@@ -37,6 +40,7 @@
  },
  {
   "row_type": "DATA",
+  "shift": "2026-11-22 6a-2p",
   "rush": "lunch",
   "check_by": "10:50",
   "station": "Window",
@@ -49,6 +53,7 @@
  },
  {
   "row_type": "DATA",
+  "shift": "2026-11-22 6a-2p",
   "rush": "lunch",
   "check_by": "11:00",
   "station": "Lobby",
@@ -61,6 +66,7 @@
  },
  {
   "row_type": "DATA",
+  "shift": "2026-11-22 6a-2p",
   "rush": "dinner",
   "check_by": "16:45",
   "station": "Grill",
@@ -73,6 +79,7 @@
  },
  {
   "row_type": "DATA",
+  "shift": "2026-11-22 6a-2p",
   "rush": "event",
   "check_by": "20:30",
   "station": "Drive Thru",

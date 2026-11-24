@@ -26,7 +26,14 @@
   "kvs_worst_sec": "63",
   "r2p_worst_sec": "44",
   "on_track": "Labor +0.4 hrs; KVS 63s at 9 AM",
-  "live_updated": "2026-11-22T09:00:00-05:00"
+  "live_updated": "2026-11-22T09:00:00-05:00",
+  "next_hour": "10a",
+  "next_hour_need_hrs": "5.5",
+  "next_hour_proj_sales": "380",
+  "hours_per_hour_left": "4.3",
+  "do_this_hour": "Sales are behind this hour. Keep both windows open and park a second person at the bagging station. Send someone on break only after the cars in line are gone.",
+  "do_next_hour": "10 AM is the lull before lunch. Restock fries and the drink machine. Have the lunch grill person in place before 10:30.",
+  "pace_cap_hrs": "5"
  },
  {
   "row_type": "DATA",
@@ -55,7 +62,14 @@
   "kvs_worst_sec": "46",
   "r2p_worst_sec": "41",
   "on_track": "On track",
-  "live_updated": "2026-11-22T15:00:00-05:00"
+  "live_updated": "2026-11-22T15:00:00-05:00",
+  "next_hour": "4p",
+  "next_hour_need_hrs": "6",
+  "next_hour_proj_sales": "480",
+  "hours_per_hour_left": "3.7",
+  "do_this_hour": "You are on track. Keep the same number of people on the floor. Do not send anyone home yet.",
+  "do_next_hour": "4 PM starts the dinner build. Put a second fryer down and a runner at the window. Check the lobby before 4:30.",
+  "pace_cap_hrs": ""
  },
  {
   "row_type": "DATA",
@@ -84,6 +98,13 @@
   "kvs_worst_sec": "70",
   "r2p_worst_sec": "52",
   "on_track": "Labor +1.0 hrs; OEPE 3:10 at 1 AM",
-  "live_updated": "2026-11-23T01:00:00-05:00"
+  "live_updated": "2026-11-23T01:00:00-05:00",
+  "next_hour": "2a",
+  "next_hour_need_hrs": "3",
+  "next_hour_proj_sales": "180",
+  "hours_per_hour_left": "3.2",
+  "do_this_hour": "Labor is over the need. If the line stays empty for 15 minutes, send one closer home. Keep one person on both windows.",
+  "do_next_hour": "2 AM is the quiet hour. Clean the lobby and count waste. Stay inside the pace cap so the morning shift still has hours.",
+  "pace_cap_hrs": "3.5"
  }
 ]

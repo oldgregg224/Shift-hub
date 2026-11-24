@@ -1,0 +1,50 @@
+[
+ {
+  "row_type": "DATA",
+  "date": "2026-11-22",
+  "shift": "2p-10p",
+  "name": "Ana R",
+  "role": "Crew",
+  "sched_start": "14:00",
+  "sched_end": "22:00",
+  "source": "Harri",
+  "note": "Called before the shift",
+  "last_updated": "2026-11-22T13:10:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "date": "2026-11-22",
+  "shift": "2p-10p",
+  "name": "Ben T",
+  "role": "Grill",
+  "sched_start": "16:00",
+  "sched_end": "22:00",
+  "source": "Phone",
+  "note": "Sick",
+  "last_updated": "2026-11-22T15:05:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "date": "2026-11-21",
+  "shift": "10p-6a",
+  "name": "Cy D",
+  "role": "Crew",
+  "sched_start": "22:00",
+  "sched_end": "06:00",
+  "source": "Harri",
+  "note": "Called ahead",
+  "last_updated": "2026-11-22T21:20:00-05:00"
+ },
+ {
+  "row_type": "DATA",
+  "date": "2026-11-22",
+  "shift": "mgr 2p-9p",
+  "name": "Dee F",
+  "role": "Window",
+  "sched_start": "14:00",
+  "sched_end": "21:00",
+  "source": "Harri",
+  "note": "Left early",
+  "last_updated": "2026-11-22T18:10:00-05:00"
+ }
+]
