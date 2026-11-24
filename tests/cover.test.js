@@ -92,4 +92,10 @@ eq(SF.hoursTxt(f2("Sanuj W")),"worked 2.1 h · scheduled 30 h","2.07 rounds in t
 eq(f2("Sanuj W").wk,2.07,"worked value kept");
 eq(SF.hoursTxt(f2("Christian M")),"scheduled 7 h","blank worked stays scheduled");
 no(f2("Sophia F").warn,/week hours not in Sheet/,"a worked row is not 'not in Sheet'");
+// 13. A "mgr …" label copied onto crew or week-hours rows is not a cover shift.
+const plain=base(grill("2026-11-03",t(16),t(22)),[C("Ana R"),C("Ben T")],[K("Ana R","GRILL REGULAR MENU",3),K("Ben T","GRILL REGULAR MENU",4)],[H("Ana R",10),H("Ben T",12)]);
+const tagged=base(grill("2026-11-03",t(16),t(22)),[C("Ana R",{shift:"mgr 2p-9p"}),C("Ben T",{shift:"mgr 5a-1p"})],[K("Ana R","GRILL REGULAR MENU",3),K("Ben T","GRILL REGULAR MENU",4)],[Object.assign(H("Ana R",10),{shift:"mgr 2p-9p"}),Object.assign(H("Ben T",12),{shift:"mgr 5a-1p"})]);
+eq(tagged.ok.map(o=>o.name),plain.ok.map(o=>o.name),"mgr shift text does not change who can cover");
+eq(tagged.ok.map(o=>o.wk),plain.ok.map(o=>o.wk),"mgr shift text does not change hours");
+eq(tagged.ok.map(o=>o.left),plain.ok.map(o=>o.left),"mgr shift text does not change hours left");
 console.log(`${n-f}/${n} passed`);process.exit(f?1:0);

@@ -46,5 +46,23 @@ ok(nx&&nx.k==="drinks and machine check","next check Sunday morning is the 10:30
 eq(nx&&nx.first,10*60+30,"next check-by is 10:30");
 const mon=P.preNext(G,8*60+45,"2026-11-23");
 ok(mon&&mon.k==="break-week lunch","Monday during the break uses the break-week lunch");
+// The PreRush tab is one shift and adds a shift column. Grouping stays the same. The header can show that shift.
+const withShift=rows.map(r=>Object.assign({shift:"2026-11-23 6a-2p"},r));
+const G2=P.preGroups(withShift);
+eq(G2.map(g=>g.k),G.map(g=>g.k),"shift column does not split or drop groups");
+eq(G2.find(g=>g.k==="dinner").first,dinner.first,"PM checks still sort as PM");
+eq(P.preShift(withShift),{raw:"2026-11-23 6a-2p",date:"2026-11-23",shift:"6a-2p"},"shift label parsed");
+eq(P.preShift([{item:"Round eggs",shift:""},{item:"Second taker"}]),null,"blank shift hides the label");
+const mixed=[
+ {rush:"breakfast",check_by:"06:30",station:"Grill",item:"Eggs",shift:"2026-11-23 6a-2p"},
+ {rush:"breakfast",check_by:"06:45",station:"Drive Thru",item:"Headset",shift:"2026-11-23 6a-2p"},
+ {rush:"lunch",check_by:"10:45",station:"Fries",item:"Baskets",shift:"2026-11-22 2p-10p"}];
+eq(P.preShift(mixed).raw,"2026-11-23 6a-2p","header uses the shift on most rows");
+eq(P.preGroups(mixed).length,2,"current-shift rows still group by rush");
+const fs=require("fs"),path=require("path");
+const appJs=fs.readFileSync(path.join(__dirname,"..","js","app.js"),"utf8");
+const presentJs=fs.readFileSync(path.join(__dirname,"..","js","present.js"),"utf8");
+const code=fs.readFileSync(path.join(__dirname,"..","apps-script","Code.gs"),"utf8");
+ok(!/PreRushBank/.test(appJs+presentJs+code),"pre-rush does not read PreRushBank");
 console.log(`${n-f}/${n} passed`);
 process.exit(f?1:0);

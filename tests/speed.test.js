@@ -41,5 +41,15 @@ eq(P.smgBlurbs("New 10/30 1:00 PM comment (visit 10/30 1:00 PM, 2/5): Old visit.
 const tail=P.smgBlurbs("New 11/16 6:16 PM comment (visit 11/16 7:13 PM, 5/5): very good. Ten new 11/15 evening comments (all 5/5): a long recap. Focus: honor fry requests.","2026-11-22",7);
 eq(tail.length,1,"one dated comment");
 eq(tail[0].comment,"very good.","recap after the comment is not part of it");
+// A shift column, including a mgr label, must not change which day or hour is shown.
+const tagged=rows.map(r=>Object.assign({},r,{shift:"2026-11-22 6a-2p"}));
+const s2=P.speedSlice(tagged,"2026-11-22");
+eq(s2.date,s.date,"shift column does not change the speed day");
+eq(s2.hours.map(o=>o.h),s.hours.map(o=>o.h),"shift column does not change the hours");
+eq(s2.total&&s2.total.oepe_sec,"71","day total stays today's ALL row");
+const mgrHour=P.speedSlice([{row_type:"DATA",date:"2026-11-22",hour:"mgr 2p-9p",oepe_sec:"80",shift:"mgr 2p-9p"}],"2026-11-22");
+eq(mgrHour.hours,[],"a mgr label is not a speed hour");
+eq(mgrHour.date,"","a mgr row does not invent a speed day");
+eq(mgrHour.hasTimes,false,"a mgr row is not today's times");
 console.log(`${n-f}/${n} passed`);
 process.exit(f?1:0);

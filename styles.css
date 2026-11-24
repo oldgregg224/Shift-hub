@@ -106,6 +106,12 @@ input:focus,textarea:focus,button:focus-visible,summary:focus-visible{outline:2p
 .cmp .num.good{color:#15803D}.cmp .num.warn{color:#854D0E}.cmp .num.bad{color:#B91C1C}
 .grade-letter{font:700 72px/76px var(--font);letter-spacing:-.04em;margin-top:4px}
 .grade-letter.good{color:#15803D}.grade-letter.warn{color:#A16207}.grade-letter.bad{color:#B91C1C}.grade-letter.neutral{color:var(--ink-2)}
+.grade-letter.sm{font-size:40px;line-height:44px}
+.card.coach{border-left:4px solid var(--accent)}
+.coach-txt{font:600 22px/30px var(--font);margin:8px 0 0;color:var(--ink)}
+.as-written{text-transform:none}
+.subhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font:700 20px/28px var(--font)}
+.card.sub{margin-left:22px;background:#F8FAFC;box-shadow:none;border:1px solid var(--line)}
 .quick[hidden]{display:none}
 button.row{width:100%;border:0;background:none;text-align:left;font:inherit;color:inherit;cursor:pointer}
 select{min-height:var(--tap);font:400 16px/22px var(--font);border-radius:var(--r-btn);border:1px solid var(--line);padding:12px;width:100%;background:var(--surface);color:var(--ink)}

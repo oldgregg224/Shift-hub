@@ -70,6 +70,10 @@ function applies(rush,trigger,today){const d=new Date(today+"T12:00:00");if(isNa
 // Soonest check that still applies today and isn't more than 30 min past. Not "the first named rush".
 function preNext(G,nowMin,today){const up=(G||[]).filter(g=>g.last!=null&&g.last+30>=nowMin&&g.k!=="event"&&applies(g.k,(g.it[0]&&g.it[0].trigger)||"",today));
  up.sort((a,b)=>(a.first??9e9)-(b.first??9e9)||(a.last-b.last));return up[0]||null}
+// PreRush holds one shift. Column "shift" looks like "2026-11-23 6a-2p". Most common value wins. Blank hides the label.
+function preShift(rows){const counts=new Map();(rows||[]).forEach(x=>{const raw=String(x&&x.shift||"").trim();if(!raw)return;counts.set(raw,(counts.get(raw)||0)+1)});
+ if(!counts.size)return null;const raw=[...counts.keys()].sort((a,b)=>(counts.get(b)-counts.get(a))||(a<b?-1:a>b?1:0))[0];
+ const m=/^(\d{4}-\d{2}-\d{2})\s+(.+)$/.exec(raw);return m?{raw,date:m[1],shift:m[2].trim()}:{raw,date:"",shift:raw}}
 // "New 11/21 11:16 AM comment (visit ..., 1/5, ...): text" blurbs stuffed into an SMG coaching cell.
 function smgBlurbs(text,today,days){text=String(text||"");const re=/New\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}:\d{2}\s*[AP]M)\s+comment\s*\(([^)]*)\)\s*:\s*/gi;
  const marks=[];let m;while((m=re.exec(text)))marks.push({i:m.index,end:m.index+m[0].length,mo:+m[1],da:+m[2],y:m[3],time:m[4].replace(/\s+/g," "),paren:m[5]});
@@ -86,6 +90,6 @@ function smgBlurbs(text,today,days){text=String(text||"");const re=/New\s+(\d{1,
   out.push({date,time:mk.time,score:sc,comment:body,sentiment:sc&&+sc<=2?"negative":sc&&+sc>=4?"positive":"",source:"smg"})});
  const seen=new Set();return out.filter(x=>{const k=x.date+"|"+x.time+"|"+x.comment.slice(0,40);if(seen.has(k))return false;seen.add(k);return true})
   .sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:(clockMinutes(b.time)||0)-(clockMinutes(a.time)||0))}
-const api={isoDate,clockMinutes,formatClock,speedSlice,paintHold,preGroups,preNext,applies,smgBlurbs,hasTimes};
+const api={isoDate,clockMinutes,formatClock,speedSlice,paintHold,preGroups,preNext,preShift,applies,smgBlurbs,hasTimes};
 if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.ShiftPresent=api;
 })(typeof window!=="undefined"?window:globalThis);
