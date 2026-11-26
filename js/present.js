@@ -74,6 +74,18 @@ function preNext(G,nowMin,today){const up=(G||[]).filter(g=>g.last!=null&&g.last
 function preShift(rows){const counts=new Map();(rows||[]).forEach(x=>{const raw=String(x&&x.shift||"").trim();if(!raw)return;counts.set(raw,(counts.get(raw)||0)+1)});
  if(!counts.size)return null;const raw=[...counts.keys()].sort((a,b)=>(counts.get(b)-counts.get(a))||(a<b?-1:a>b?1:0))[0];
  const m=/^(\d{4}-\d{2}-\d{2})\s+(.+)$/.exec(raw);return m?{raw,date:m[1],shift:m[2].trim()}:{raw,date:"",shift:raw}}
+function normShiftId(v){const t=String(v||"").toLowerCase().replace(/\s|:00|m\b/g,"").replace(/[–—]+/g,"-");
+ if(t.indexOf("10p")>=0)return "10p-6a";if(t.indexOf("6a")>=0)return "6a-2p";if(t.indexOf("2p")>=0)return "2p-10p";return ""}
+function preRushHeader(parsed,current){if(!parsed)return null;const id=normShiftId(parsed.shift),curId=current&&normShiftId(current.shift);
+ const match=!!(current&&parsed.date&&parsed.date===current.date&&id&&id===curId);
+ if(match)return {match:true,title:"This shift",warning:"",when:"",shift:id,date:parsed.date};
+ const wd=parsed.date?["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(parsed.date+"T12:00:00Z").getUTCDay()]:"";
+ const when=[wd,parsed.shift].filter(Boolean).join(" ");
+ return {match:false,title:"Last shift's pre-rush"+(when?" ("+when+")":""),warning:"Not updated for this shift yet",when,shift:id,date:parsed.date||""}}
+function freshLabel(o){o=o||{};if(o.pending&&!o.hasRows&&!o.when)return "Checking…";
+ if(o.missing&&!o.pending&&!o.hasRows)return "Not in the Sheet yet";
+ if(o.when)return "Updated "+o.when+(o.stale?" · stale":"");
+ if(o.hasRows)return "Updated";return ""}
 // "New 11/21 11:16 AM comment (visit ..., 1/5, ...): text" blurbs stuffed into an SMG coaching cell.
 function smgBlurbs(text,today,days){text=String(text||"");const re=/New\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}:\d{2}\s*[AP]M)\s+comment\s*\(([^)]*)\)\s*:\s*/gi;
  const marks=[];let m;while((m=re.exec(text)))marks.push({i:m.index,end:m.index+m[0].length,mo:+m[1],da:+m[2],y:m[3],time:m[4].replace(/\s+/g," "),paren:m[5]});
@@ -90,6 +102,6 @@ function smgBlurbs(text,today,days){text=String(text||"");const re=/New\s+(\d{1,
   out.push({date,time:mk.time,score:sc,comment:body,sentiment:sc&&+sc<=2?"negative":sc&&+sc>=4?"positive":"",source:"smg"})});
  const seen=new Set();return out.filter(x=>{const k=x.date+"|"+x.time+"|"+x.comment.slice(0,40);if(seen.has(k))return false;seen.add(k);return true})
   .sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:(clockMinutes(b.time)||0)-(clockMinutes(a.time)||0))}
-const api={isoDate,clockMinutes,formatClock,speedSlice,paintHold,preGroups,preNext,preShift,applies,smgBlurbs,hasTimes};
+const api={isoDate,clockMinutes,formatClock,speedSlice,paintHold,preGroups,preNext,preShift,preRushHeader,freshLabel,applies,smgBlurbs,hasTimes};
 if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.ShiftPresent=api;
 })(typeof window!=="undefined"?window:globalThis);

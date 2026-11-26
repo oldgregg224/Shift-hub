@@ -54,14 +54,18 @@ async function setUpd(tab,rows,live,r){const scr0=cur;if(tab==="Speed"&&cur==="r
  // v33: while the live fetch is still in flight (saved copy shown), never style it stale; wait for the live result.
  const fl=[r.refreshing&&ShiftData.inflight(tab),metaPend&&r.src!=="cached"&&ShiftData.inflight("Meta")].filter(Boolean);const pend=fl.length>0;if(cur!==scr0)return;
  if(pend){const scr=cur;Promise.allSettled(fl).then(()=>{metaPend=false;if(cur===scr&&!document.querySelector("#app input:focus")&&!$("#sheet"))show(scr)})}
- const stale=tab==="ShiftGoals"?(!pend&&ShiftCal.goalsAreStale(liveStamp,goalStamp,Date.now())):(!pend&&!!(t&&t.d&&Date.now()-t.d>thr));CUR={src:r.src,stale,tab,at:r.at};
- let txt=t?"Last synced "+(t.d?fmtT(t.d):t.v)+(pend?" · checking…":stale?" · stale":""):(pend?"Checking…":"Last synced: not in Sheet");
- if(r.src==="cached"&&r.at)txt+=" · saved copy from "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+ const rowStamp=ShiftCal.newestStamp(stampRows,["last_updated","updated","live_updated"]);if(rowStamp&&rowStamp.d&&(!t||!t.d||rowStamp.d>t.d))t=rowStamp;
+ const stale=tab==="ShiftGoals"?(!pend&&ShiftCal.goalsAreStale(liveStamp,goalStamp,Date.now())):(!pend&&!!(t&&t.d&&Date.now()-t.d>thr));
+ CUR={src:r.src,stale,tab,at:r.at,refreshing:!!(pend||r.refreshing)};
+ const hasRows=!!(rows&&rows.length),when=t&&t.d?fmtT(t.d):"";
+ const missing=!pend&&r.src==="live"&&!hasRows&&!when;
+ let txt=ShiftPresent.freshLabel({pending:!!pend,hasRows,when,missing,stale:!!stale&&!pend});
+ if(r.src==="cached"&&r.at&&txt)txt+=" · saved "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached");TABST[cur]={c:Object.assign({},CUR),upd:txt,cls:stale||r.src==="cached"}}
 const TABST={};
 const keyMsg=()=>{const b=ShiftData.status.bad;if(b==="key")return "Key didn't work, using sample data";
  if(ShiftData.scriptBroken&&ShiftData.scriptBroken())return "The shared Sheet script deployment is broken (no doGet), showing "+(CUR.src==="cached"?"saved live":"sample")+" data. Ask your GM to paste the full Code.gs and deploy a new version";
- if(CUR.src==="cached")return "Couldn't refresh, showing saved live data";if(b==="net"&&CUR.src==="sample"&&ShiftData.Key.get())return "Couldn't reach live data, using sample data";return ""};
+ if(CUR.src==="cached"&&!CUR.refreshing)return "Couldn't refresh, showing saved live data";if(b==="net"&&CUR.src==="sample"&&ShiftData.Key.get())return "Couldn't reach live data, using sample data";return ""};
 function keyBanner(){let b=$("#keybanner");const m=keyMsg();if(!b){b=document.createElement("p");b.id="keybanner";b.className="err";b.setAttribute("role","alert");b.style.margin="0 16px 8px";$("#upd").after(b)}
  b.hidden=!m;b.textContent=m?(ShiftData.status.bad==="key"?"Shared key didn't work. Open Settings and re-enter it.":m+". Retrying automatically."):""}
 function setSrc(live,src){if(src)CUR.src=src;else if(!live)CUR.src="sample";else if(CUR.src==="sample")CUR.src="live";
@@ -146,15 +150,19 @@ const within=(p,ms,fb)=>new Promise(res=>{let d=0;const t=setTimeout(()=>{if(!d)
 let FLATE={};
 const S={
 async home(){const r=await get("Brief"),b=r[0]||{};const EX=homeExtras();
- const sa=n(b.sales_actual),sp=n(b.sales_projection),la=n(b.labor_actual_pct),lp=n(b.labor_projection_pct);
- const ss=isNaN(sp)?"neutral":status(sa,sp,"sales"),ls=isNaN(lp)?"neutral":status(la,lp,"labor");
+ const sa=n(b.sales_actual),sp=n(b.sales_projection),lp=n(b.labor_projection_pct);
  const na=v=>/^\s*n\/?a\b/i.test(String(v??"").replace(/^EXAMPLE:\s*/i,""));const odNA=na(b.overdue_checklists);
- const X=await EX,otr=X.ot,otN=otr.length?otr.map(x=>crewNm(x.first_name)).join(", "):b.overtime_watch_first_names;
+ const X=await EX,laborNow=ShiftCal.laborPick((X.labor&&X.labor.rows)||[],new Date());
+ const la=laborNow&&laborNow.pct!=null?laborNow.pct:n(b.labor_actual_pct);
+ const ss=isNaN(sp)?"neutral":status(sa,sp,"sales"),ls=isNaN(lp)||isNaN(la)?"neutral":status(la,lp,"labor");
+ const lhrs=laborNow&&laborNow.hours!=null?(Math.round(laborNow.hours*10)/10)+" h":"";
+ const lmeta=[lhrs,laborNow&&laborNow.prior?laborNow.label:"",isNaN(lp)?"":"target "+pct(lp)].filter(Boolean).join(" · ");
+ const otr=X.ot,otN=otr.length?otr.map(x=>crewNm(x.first_name)).join(", "):b.overtime_watch_first_names;
  const ot=otr.length?otr.length:listCount(b.overtime_watch_first_names),od=listCount(b.overdue_checklists),cm=n(b.new_smg_comment_count)||0,hr=n(b.open_harri_requests)||0;
  const rush=b.rush_banner?`<div class="alert">${I("siren")}<div><b>${esc(b.rush_banner)}</b><span>Rush today</span></div></div>`:"";
  return keyAlert()+rush+
  kpi("Sales",money(sa),isNaN(sp)?"":"of "+money(sp)+" projected",ss,(isNaN(sa-sp)?"":(sa-sp<0?"−":"+")+money(Math.abs(sa-sp))+" · ")+({good:"Ahead",warn:"Behind",bad:"Behind"}[ss]||""),null)+
- kpi("Labor",pct(la),isNaN(lp)?"":"target "+pct(lp),ls,(isNaN(la-lp)?"":sgn(la-lp,1)+" · ")+({good:"On target",warn:"Watch",bad:"Over"}[ls]||""),"labor")+
+ kpi("Labor",pct(la),lmeta,ls,(isNaN(la)||isNaN(lp)?"":sgn(la-lp,1)+" · ")+({good:"On target",warn:"Watch",bad:"Over"}[ls]||""),"labor")+
  goalHome(X.goals)+
  `<div class="grid">`+
  kpi("Overtime",ot,ot?otN:"No one close",status(ot,0,"count"),ot?"Watch":"Clear","ot",1)+
@@ -176,10 +184,14 @@ async labor(){const r=await get("Labor");
  const card=(lbl,x)=>{const l=num(x,LP),t=tgt(x),s=isNaN(t)?"neutral":status(l,t,"labor"),call=fld(x,["call","labor_call","action"]),hm=hrs(x);
   return `<div class="card"><div class="lbl">${lbl}${chipIf(s,(isNaN(l-t)?"":sgn(l-t,1)+" · ")+(WORD[s]||""))}</div><div class="hero">${pct(l)}</div>
   <div class="meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${[isNaN(t)?"":"target "+pct(t),hm].filter(Boolean).join(" · ")} ${call?chip(callSt(call),call):""}</div></div>`};
- const N=pickNow(hours,has);
+ const picked=ShiftCal.laborPick(r,new Date());
+ const etNow=ShiftCal.etParts(new Date());
+ const fallback=pickNow(hours,has);
+ let shown=picked?hours.filter(o=>{const d=String(fld(o.x,["date","business_date","day"])||"").slice(0,10);if(d&&d!==picked.date)return false;return !etNow||d<etNow.ymd||o.h<=etNow.hour}):hours;
+ if(picked&&!shown.length)shown=(r||[]).map(x=>{const d=String(fld(x,["date","business_date","day"])||"").slice(0,10);const h=hourOf(fld(x,["hour","time","hour_start","interval"]));return {h,x,d}}).filter(o=>o.h!=null&&o.d===picked.date&&(!etNow||o.d<etNow.ymd||o.h<=etNow.hour));
  const tdy=ymd(new Date()),tot=total&&(String(fld(total,["date","business_date","day"])||"").slice(0,10)||tdy)===tdy?total:null;
- return keyAlert()+(N?card(N.lbl,N.o.x):"")+(tot?card("Day total",tot):"")+
- (hours.length?`<div class="sec">By hour</div><div class="list">${hours.map(({h,x})=>{const l=num(x,LP),t=tgt(x),call=fld(x,["call","labor_call","action"]),st=isNaN(t)?"neutral":status(l,t,"labor"),hm=hrs(x),sa=num(x,SL);
+ return keyAlert()+(picked?card(picked.label,picked.row):(fallback?card(fallback.lbl,fallback.o.x):""))+(tot&&(!picked||!picked.prior)?card("Day total",tot):"")+
+ (shown.length?`<div class="sec">By hour</div><div class="list">${shown.map(({h,x})=>{const l=num(x,LP),t=tgt(x),call=fld(x,["call","labor_call","action"]),st=isNaN(t)?"neutral":status(l,t,"labor"),hm=hrs(x),sa=num(x,SL);
  const cut=fld(x,["position_to_cut_first","cut_first"]),prep=fld(x,["prep_level_notes","prep_notes","prep"]),hold=fld(x,["hold_time_reminders","hold_notes"]);
  return `<details><summary class="row"><span class="t">${hs(h)}</span><span class="v">${pct(l)}<small>${[hm,st!=="neutral"?WORD[st]:""].filter(Boolean).join(" · ")||(has(x)?"":"No data yet")}</small></span>${call?chip(callSt(call),call):""}${I("chevron-down","cv")}</summary>
  <div class="det">${cut?`<div><b>Cut first:</b> ${esc(cut)}</div>`:""}${prep?`<div><b>Prep:</b> ${esc(prep)}</div>`:""}${hold?`<div><b>Hold:</b> ${esc(hold)}</div>`:""}${isNaN(sa)?"":`<div><b>Sales:</b> ${money(sa)}</div>`}${isNaN(t)?"":`<div><b>Target:</b> ${pct(t)}</div>`}</div></details>`}).join("")}</div>`:"")},
@@ -521,9 +533,9 @@ function otRows(rows){const r=(rows||[]).filter(isDR).filter(x=>String(x.first_n
  const h=v=>{const x=n(v);return isNaN(x)?-1e9:x};return r.filter(x=>!ws||!x.week_start||String(x.week_start).slice(0,10)===ws).sort((a,b)=>h(b.over_by)-h(a.over_by)||h(b.projected_hours)-h(a.projected_hours))}
 // Home extras: never hold Home up more than 2.5 s; redraw once when late rows land.
 let XLATE=0;
-async function homeExtras(){const ld=t=>ShiftData.load(t).catch(()=>({rows:[],src:"error"}));const ps={oos:ld("OutOfStock"),ot:ld("OTRisk"),pre:ld("PreRush"),goals:ld("ShiftGoals"),grades:ld("ShiftGrades"),tasks:ld("Tasks")};
+async function homeExtras(){const ld=t=>ShiftData.load(t).catch(()=>({rows:[],src:"error"}));const ps={oos:ld("OutOfStock"),ot:ld("OTRisk"),pre:ld("PreRush"),goals:ld("ShiftGoals"),grades:ld("ShiftGrades"),tasks:ld("Tasks"),labor:ld("Labor")};
  const ks=Object.keys(ps),vs=await Promise.all(ks.map(k=>within(ps[k],2500,null)));const out={};let late=false;
- ks.forEach((k,i)=>{const v=vs[i];if(!v)late=true;if(k==="goals"||k==="grades"||k==="tasks"){out[k]=v||{rows:[],src:"slow"};return}const rows=v?(v.rows||[]).filter(isDR):[];out[k]=k==="ot"?otRows(rows):k==="oos"?rows.filter(x=>String(x.item||"").trim()):rows.filter(x=>String(x.item||"").trim())});
+ ks.forEach((k,i)=>{const v=vs[i];if(!v)late=true;if(k==="goals"||k==="grades"||k==="tasks"||k==="labor"){out[k]=v||{rows:[],src:"slow"};return}const rows=v?(v.rows||[]).filter(isDR):[];out[k]=k==="ot"?otRows(rows):k==="oos"?rows.filter(x=>String(x.item||"").trim()):rows.filter(x=>String(x.item||"").trim())});
  if(late)Promise.allSettled(ks.map(k=>ps[k])).then(()=>{if(cur==="home"&&!$("#sheet")&&!editing()&&Date.now()-XLATE>20000){XLATE=Date.now();show("home")}});
  return out}
 function oosHome(rows){if(!rows||!rows.length)return "";const it=rows.map(x=>({x,s:since_(x.since)})).sort((a,b)=>(a.s.ms??Infinity)-(b.s.ms??Infinity));
@@ -553,7 +565,9 @@ function preRows(r){let rows=(r.rows||[]).filter(isDR).filter(x=>String(x.item||
  if(r.src==="sample"&&rows.length){const dates=rows.map(x=>(ShiftPresent.preShift([x])||{}).date).filter(Boolean).sort();const dest=(ShiftCal.currentShift(new Date())||{}).date;
   if(dates.length&&dest){const delta=ShiftCal.dayNum(dest)-ShiftCal.dayNum(dates[dates.length-1]);if(delta)rows=rows.map(x=>{const sh=ShiftPresent.preShift([x]);if(!sh||!sh.date)return x;return Object.assign({},x,{shift:ShiftCal.addDays(sh.date,delta)+(sh.shift?" "+sh.shift:"")})})}}
  return rows}
-function preBanner(rows){const sh=ShiftPresent.preShift(rows);if(!sh)return "";const id=ShiftCal.normShift(sh.shift),nice=id&&ShiftCal.BY[id]?ShiftCal.BY[id].label:sh.shift,day=sh.date?fmtDay(sh.date):"";
+function preBanner(rows){const sh=ShiftPresent.preShift(rows);const head=ShiftPresent.preRushHeader(sh,ShiftCal.currentShift(new Date()));if(!head)return "";
+ if(!head.match)return `<div class="card"><div class="lbl">Last shift's pre-rush${head.when?` <span class="as-written">(${esc(head.when)})</span>`:""}</div><p class="coach-txt">${esc(head.warning)}</p></div>`;
+ const id=head.shift,nice=id&&ShiftCal.BY[id]?ShiftCal.BY[id].label:sh.shift,day=sh.date?fmtDay(sh.date):"";
  return `<div class="card"><div class="lbl">This shift</div><div class="hero sm">${esc([day,nice].filter(Boolean).join(" · "))}</div></div>`}
 S.prerush=async()=>{const r=await loadT("PreRush");const hd=backBtn()+`<div class="tip">${I("lock")}<span>Read-only · this shift only · separate from Floor's checklist</span></div>`;
  if(r.src==="unsupported")return hd+pendCard("Pre-rush checklist","PreRush");
@@ -649,14 +663,14 @@ function calloutBlock(g,pack){if(!g||ShiftCal.isBlank(g.callouts)||(g.calloutCou
 function gradeCard(g,pack,sub,groupDate){const pair=(lbl,actual,target,kind,fmt)=>{const st=kind==="sales"?ShiftCal.salesStatus(actual,target):ShiftCal.lowerStatus(actual,target);
   return cmp(lbl,actual==null?"—":fmt(actual),target==null?"":"target "+fmt(target),st,kind==="sales"?saleWord(st):null)};
  const line=ShiftCal.calloutLine(g);const hit=g.goalsHit?chip("neutral",g.goalsHit+" hit"):"";
- const head=sub?`<div class="subhead"><span><b>${esc(g.managerLabel)}</b>${g.mgrHours?` <span class="as-written">· ${esc(g.mgrHours)}</span>`:""}</span>${hit}</div>`:`<div class="lbl">${esc(fmtDay(g.date))} · ${esc(g.label||g.shift||"")}${hit}</div>`;
+ const head=sub?`<div class="subhead"><span><b>${esc(g.managerLabel)}</b>${g.mgrHours?` <span class="as-written">· ${esc(g.mgrHours)}</span>`:""}</span>${hit}</div>`:`<div class="lbl stack"><span class="when">${esc(fmtDay(g.date))} · ${esc(g.label||g.shift||"")}</span> ${hit}</div>`;
  const moved=sub&&groupDate&&g.date&&g.date!==groupDate?`<div class="meta">These hours are on ${esc(fmtDay(g.date))}.</div>`:"";
  return `<div class="card${sub?" sub":""}">${head}
   <div class="grade-letter${sub?" sm":""} ${esc(g.tone)}">${esc(g.letter||"—")}</div>
   ${sub?"":`<div class="mgr"><b>${esc(g.managerLabel)}</b><span class="meta" style="margin:0">Manager</span></div>`}
   ${pair("Sales",g.sales,g.salesProj,"sales",money)+pair("Labor",g.laborPct,g.laborPctTarget,"labor",pct)+pair("Hours",g.hours,g.hoursCap,"labor",hrsTxt)}
   ${cmp("OEPE",mmss(g.oepe==null?NaN:g.oepe),"","neutral")+cmp("KVS",mmss(g.kvs==null?NaN:g.kvs),"","neutral")+cmp("R2P",mmss(g.r2p==null?NaN:g.r2p),"","neutral")}
-  ${g.lowSurveys==null?"":cmp("Low surveys",String(g.lowSurveys),"",g.lowSurveys>0?"bad":"good",g.lowSurveys>0?"Low":"None")}
+  ${g.lowSurveys==null?"":cmp("Low surveys",g.surveyText||String(g.lowSurveys),"",g.lowSurveys>0?"bad":"good",g.lowSurveys>0?"Low":"None")}
   ${line?`<p class="meta" style="-webkit-line-clamp:4">${esc(line)}</p>`:""}
   ${g.adjustedNote?`<p class="meta" style="-webkit-line-clamp:8">${esc(g.adjustedNote)}</p>`:""}
   ${g.why?`<p class="meta" style="-webkit-line-clamp:8"><b>Why:</b> ${esc(g.why)}</p>`:""}
@@ -672,9 +686,11 @@ S.grades=async()=>{const r=await loadT("ShiftGrades");const hd=backBtn()+`<div c
  return keyAlert()+hd+groups.map(gr=>{const cards=gr.grades.map(g=>gradeCard(g,calls)).join("")+gr.managers.map(g=>gradeCard(g,calls,1,gr.date)).join("");
   return gr.grades.length?cards:`<div class="sec">${esc([fmtDay(gr.date),gr.label].filter(Boolean).join(" · "))}</div>`+cards}).join("")};
 const MEK="shifthub_me",TQK="shifthub_taskq",TLK="shifthub_task_local";
-let TASKVIEW="mine",TASKSHIFT="",TASKREPEAT="none",TASKDAYS=[],TASKERR="",TASKBUSY=false,TASKROWS=[];
+let TASKVIEW="mine",TASKSHIFT="",TASKREPEAT="none",TASKDAYS=[],TASKERR="",TASKBUSY=false,TASKROWS=[],PENDING=null;
 const jget=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||"");return v==null?fb:v}catch(e){return fb}};
 const meName=()=>{try{return TaskLib.personName(localStorage.getItem(MEK)||"")}catch(e){return ""}};
+async function saveMe(raw){const nm=TaskLib.personName(raw);if(!nm)return;try{localStorage.setItem(MEK,nm)}catch(e){}
+ const p=PENDING;PENDING=null;if(p&&p.kind==="done")await taskAct("task_done",{id:p.id,done_by:nm});else if(p&&p.kind==="undo")await taskAct("task_undo",{id:p.id});show("tasks",{force:1})}
 const qGet=()=>{const q=jget(TQK,[]);return Array.isArray(q)?q:[]};
 const qSet=a=>{try{localStorage.setItem(TQK,JSON.stringify(a))}catch(e){}};
 const locGet=()=>{const o=jget(TLK,{rows:[],hide:[]})||{rows:[],hide:[]};return {rows:Array.isArray(o.rows)?o.rows:[],hide:Array.isArray(o.hide)?o.hide:[]}};
@@ -743,13 +759,15 @@ function taskScreen(rows,names){TASKROWS=rows||[];const me=meName();const now=ne
  const err=TASKERR?`<p class="err" role="alert">${esc(TASKERR)}</p>`:"";
  const who=me?`<p class="meta" style="margin:0">You are <b style="color:var(--ink)">${esc(me)}</b> · <button class="btn" type="button" data-changeme="1" style="min-height:36px">Not you?</button></p>`:"";
  let body="";
- if(TASKVIEW==="mine"){if(!me){const pick=names.length?`<div class="quick">${names.map(nm=>`<button class="btn" type="button" data-me="${esc(nm)}">${esc(nm)}</button>`).join("")}</div>`:`<p class="meta">No crew list yet. Type a first name and last initial.</p>`;
-  body=`<div class="card stack"><div class="lbl">Who are you?</div><p class="meta" style="-webkit-line-clamp:4">Pick your name once on this phone. It stays here and is used as the person who tapped done.</p>${pick}<input id="mename" placeholder="First name Last" aria-label="Your name" maxlength="40"><button class="btn primary block" type="button" data-saveme="1">Save my name</button></div>`}
+ const nameCard=why=>{const pick=names.length?`<div class="quick">${names.map(nm=>`<button class="btn" type="button" data-me="${esc(nm)}">${esc(nm)}</button>`).join("")}</div>`:`<p class="meta">No crew list yet. Type a first name and last initial.</p>`;
+  return `<div class="card stack" id="namepick"><div class="lbl">Who are you?</div><p class="meta" style="-webkit-line-clamp:6">${esc(why)}</p>${pick}<input id="mename" placeholder="First name Last" aria-label="Your name" maxlength="40"><button class="btn primary block" type="button" data-saveme="1">Save my name</button></div>`};
+ const ask=!me&&PENDING?nameCard(PENDING.kind==="undo"?"Pick your name, then this task will be reopened.":"Pick your name, then this task will be marked done."):"";
+ if(TASKVIEW==="mine"){if(!me)body=nameCard(PENDING?"Pick your name, then this task will be marked done.":"Pick your name once on this phone. It stays here and is used as the person who tapped done.");
   else body=(mine.length?`<div class="sec">Open · tap to mark done</div><div class="list">${mine.map(t=>taskLine(t,"mine")).join("")}</div>`:empty("Nothing open for "+me))}
  else{const od=TaskLib.sortOpen(open.filter(t=>TaskLib.isOverdue(t,now)),now);
   const by={};open.filter(t=>!TaskLib.isOverdue(t,now)).forEach(t=>{const k=TaskLib.personName(t.assignee)||"Unassigned";(by[k]=by[k]||[]).push(t)});
   const people=Object.keys(by).sort();
-  const opts=[...new Set([].concat(names,open.map(t=>TaskLib.personName(t.assignee)),me?[me]:[]).filter(Boolean))].sort();
+  const opts=names.slice();
   if(!TASKSHIFT)TASKSHIFT=(ShiftCal.currentShift(now)||{}).shift||"6a-2p";
   const shSeg=`<div class="seg">${["6a-2p","2p-10p","10p-6a"].map(s=>`<button type="button" data-taskshift="${s}" class="${TASKSHIFT===s?"on":""}">${esc(ShiftCal.BY[s].label)}</button>`).join("")}</div>`;
   const rpSeg=`<div class="seg">${[["none","None"],["daily","Daily"],["weekly","Weekly"]].map(([k,l])=>`<button type="button" data-taskrepeat="${k}" class="${TASKREPEAT===k?"on":""}">${l}</button>`).join("")}</div>`;
@@ -757,18 +775,21 @@ function taskScreen(rows,names){TASKROWS=rows||[];const me=meName();const now=ne
   body=`<div class="card stack"><div class="lbl">Add a task</div><input id="tt" placeholder="What needs doing" aria-label="Task title" maxlength="80"><input id="tn" placeholder="Note (optional)" aria-label="Task note" maxlength="280">
    ${opts.length?`<select id="ta" aria-label="Assignee">${opts.map(nm=>`<option${nm===me?" selected":""}>${esc(nm)}</option>`).join("")}</select>`:`<input id="ta" placeholder="Assignee · first name last initial" aria-label="Assignee" maxlength="40">`}
    <input id="ts" placeholder="Station (optional)" aria-label="Station" maxlength="40"><input id="tdate" type="date" aria-label="Due date" value="${esc(today)}">
-   ${shSeg}${rpSeg}${days}<button class="btn primary block" type="button" data-taskadd="1">Add task</button></div>`
+   ${shSeg}${rpSeg}${days}<button class="btn primary block" type="button" data-taskadd="1"${TASKBUSY?" disabled":""}>Add task</button></div>`
    +(od.length?`<div class="sec">Overdue (${od.length})</div><div class="list">${od.map(t=>taskLine(Object.assign({},t,{title:(TaskLib.personName(t.assignee)||"Unassigned")+" · "+t.title}),"all")).join("")}</div>`:"")
    +people.map(p=>{const list=by[p].slice().sort((a,b)=>(ShiftCal.ORDER[a.due_shift]??9)-(ShiftCal.ORDER[b.due_shift]??9)||String(a.title).localeCompare(String(b.title)));
     return `<div class="sec">${esc(p)} (${list.length})</div><div class="list">${list.map(t=>taskLine(t,"all")).join("")}</div>`}).join("")
    +(doneToday.length?`<div class="sec">Done today (${doneToday.length})</div><div class="list">${doneToday.map(t=>taskLine(t,"all")).join("")}</div>`:"");
  }
- return backBtn()+`<div class="tip">${I("info")}<span>Check-offs show who tapped done.</span></div>`+seg+who+err+sync+body}
+ return backBtn()+`<div class="tip">${I("info")}<span>Check-offs show who tapped done.</span></div>`+seg+who+err+sync+(TASKVIEW==="mine"?"":ask)+body}
 S.tasks=async()=>{const flushed=await flushTasks();if(flushed&&flushed.unsupported)TASKERR="Tasks needs the Apps Script update (v30). This change was not saved.";
  const r=await loadT("Tasks");
  if(r.src==="unsupported")return backBtn()+`<div class="tip">${I("info")}<span>Check-offs show who tapped done.</span></div>`+pendCard("Tasks","Tasks");
- const crew=await within(ShiftData.load("Crew"),2000,null);const names=((crew&&crew.rows)||[]).filter(isDR).map(x=>TaskLib.personName(x.name||x.first_name)).filter(Boolean);
- return keyAlert()+taskScreen(taskRowsOf(r),[...new Set(names)].sort())};
+ const crew=await within(ShiftData.load("Crew"),2000,null);const roster=await within(ShiftData.load("Roster"),2000,null);const tasks=taskRowsOf(r);
+ const crewN=((crew&&crew.rows)||[]).filter(isDR).map(x=>x.name||x.first_name);
+ const mgrN=((roster&&roster.rows)||[]).filter(isDR).filter(x=>/manager/i.test(String(x.role||""))).map(x=>x.name||x.first_name);
+ const names=TaskLib.peopleNames([crewN,mgrN,tasks.map(t=>t.assignee)]);
+ return keyAlert()+taskScreen(tasks,names)};
 
 // ---- Tools ----
 const TOOLS=[["floor","Floor","clipboard-list","Positions, breaks, checklists"],["inventory","Inventory","package","Counts, low stock, order list"],["waste","Waste log","trash","Quick log, daily totals"],["equipment","Equipment","wrench","Issues and fixes"],["crewnotes","Crew notes","notebook","Training, praise, call-outs"],["cover","Who can cover?","users","Suggest crew for an open shift"],["prerush","Pre-rush checklist","timer","What to check before each rush"],["outofstock","Out of stock","package","QSRSoft out-of-stock list"]];
@@ -850,7 +871,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
 let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
-const APPVER="v44";
+const APPVER="v45";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -896,7 +917,7 @@ const VIEW={};let seq=0,shown="",DEFER="";
 const editing=()=>{const a=document.activeElement;if(a&&app.contains(a)&&a.matches("input:not([type=checkbox]),textarea"))return true;
  return [...app.querySelectorAll("input:not([type=checkbox]):not([type=password]),textarea")].some(i=>i.value!==i.defaultValue)};
 app.addEventListener("focusout",()=>setTimeout(()=>{if(DEFER&&DEFER===cur&&!editing()){DEFER="";show(cur)}},150));
-const FOCUS={cover:["Crew","Skills","DaysOff","WeekHours","Availability","SchoolCal","Roster","Meta"],home:["Brief","OutOfStock","OTRisk","PreRush","ShiftGoals","ShiftGrades","Tasks","Roster","Meta"],goals:["ShiftGoals","Meta"],grades:["ShiftGrades","Callouts","Meta"],tasks:["Tasks","Crew","Meta"],outofstock:["OutOfStock","Meta"],prerush:["PreRush","Meta"],ot:["OTRisk","Brief","Meta"],whoson:["Roster","Meta"],labor:["Labor","Brief","Meta"],rushes:["Events","Speed","Meta"],speed:["Speed","Meta"],guest:["SMG","Comments","Brief","Meta"],tools:["Brief","Meta"]};
+const FOCUS={cover:["Crew","Skills","DaysOff","WeekHours","Availability","SchoolCal","Roster","Meta"],home:["Brief","Labor","OutOfStock","OTRisk","PreRush","ShiftGoals","ShiftGrades","Tasks","Roster","Meta"],goals:["ShiftGoals","Meta"],grades:["ShiftGrades","Callouts","Meta"],tasks:["Tasks","Crew","Roster","Meta"],outofstock:["OutOfStock","Meta"],prerush:["PreRush","Meta"],ot:["OTRisk","Brief","Meta"],whoson:["Roster","Meta"],labor:["Labor","Brief","Meta"],rushes:["Events","Speed","Meta"],speed:["Speed","Meta"],guest:["SMG","Comments","Brief","Meta"],tools:["Brief","Meta"]};
 const PV=new Set(["floor:positions","floor:breaks","floor:checklist","floor:fixes","floor:handoff","inventory","waste","equipment","crewnotes"]);
 const pvGet=vk=>{try{return PV.has(vk)?localStorage.getItem("shifthub_view_"+vk):null}catch(e){return null}};
 const pvSet=(vk,h)=>{if(!PV.has(vk))return;clearTimeout(pvSet[vk]);pvSet[vk]=setTimeout(()=>{try{localStorage.setItem("shifthub_view_"+vk,h)}catch(e){}},500)};
@@ -934,14 +955,15 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  const tsh=e.target.closest("[data-taskshift]");if(tsh){TASKSHIFT=tsh.dataset.taskshift;tsh.parentElement.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===tsh));return}
  const trp=e.target.closest("[data-taskrepeat]");if(trp){TASKREPEAT=trp.dataset.taskrepeat;trp.parentElement.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===trp));const days=document.getElementById("taskdays");if(days)days.hidden=TASKREPEAT!=="weekly";return}
  const tdy=e.target.closest("[data-tday]");if(tdy){const d=tdy.dataset.tday,i=TASKDAYS.indexOf(d);if(i>=0)TASKDAYS.splice(i,1);else TASKDAYS.push(d);tdy.classList.toggle("primary",TASKDAYS.indexOf(d)>=0);return}
- const meb=e.target.closest("[data-me]");if(meb){try{localStorage.setItem(MEK,TaskLib.personName(meb.dataset.me))}catch(err){}show("tasks");return}
- if(e.target.closest("[data-changeme]")){try{localStorage.removeItem(MEK)}catch(err){}show("tasks");return}
- if(e.target.closest("[data-saveme]")){const nm=TaskLib.personName(($("#mename")||{}).value||"");if(!nm){const el=$("#mename");if(el)el.focus();return}try{localStorage.setItem(MEK,nm)}catch(err){}show("tasks");return}
- const tadd=e.target.closest("[data-taskadd]");if(tadd){const assignee=($("#ta")||{}).value||"";const rep=TASKREPEAT==="weekly"?"weekly:"+(TASKDAYS.length?TASKDAYS.slice().sort((a,b)=>["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(a)-["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(b)).join(","):"Mon"):TASKREPEAT;
+ const meb=e.target.closest("[data-me]");if(meb){await saveMe(meb.dataset.me);return}
+ if(e.target.closest("[data-changeme]")){try{localStorage.removeItem(MEK)}catch(err){}PENDING=null;show("tasks");return}
+ if(e.target.closest("[data-saveme]")){const nm=TaskLib.personName(($("#mename")||{}).value||"");if(!nm){const el=$("#mename");if(el)el.focus();return}await saveMe(nm);return}
+ const tadd=e.target.closest("[data-taskadd]");if(tadd){if(TASKBUSY||tadd.disabled)return;tadd.disabled=true;const assignee=($("#ta")||{}).value||"";const rep=TASKREPEAT==="weekly"?"weekly:"+(TASKDAYS.length?TASKDAYS.slice().sort((a,b)=>["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(a)-["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(b)).join(","):"Mon"):TASKREPEAT;
   const v=TaskLib.validateAdd({title:($("#tt")||{}).value,note:($("#tn")||{}).value,assignee,station:($("#ts")||{}).value,due_date:($("#tdate")||{}).value,due_shift:TASKSHIFT,repeat:rep,created_by:meName()});
-  if(!v.ok){TASKERR=v.error;show("tasks");return}TASKERR="";await taskAct("task_add",v.row);show("tasks",{force:1});return}
- const tdn=e.target.closest("[data-taskdone]");if(tdn){if(!meName()){TASKVIEW="mine";TASKERR="Pick your name first. Check-offs show who tapped done.";show("tasks");return}await taskAct("task_done",{id:tdn.dataset.taskdone,done_by:meName()});show("tasks",{force:1});return}
- const tun=e.target.closest("[data-taskundo]");if(tun){await taskAct("task_undo",{id:tun.dataset.taskundo});show("tasks",{force:1});return}
+  if(!v.ok){tadd.disabled=false;TASKERR=v.error;show("tasks");return}TASKERR="";const added=await taskAct("task_add",v.row);
+  if($("#tt"))$("#tt").value="";if($("#tn"))$("#tn").value="";if(added&&added.error&&!added.ok&&!added.local){tadd.disabled=false}show("tasks",{force:1});return}
+ const tdn=e.target.closest("[data-taskdone]");if(tdn){if(!meName()){PENDING={kind:"done",id:tdn.dataset.taskdone};show("tasks");return}await taskAct("task_done",{id:tdn.dataset.taskdone,done_by:meName()});show("tasks",{force:1});return}
+ const tun=e.target.closest("[data-taskundo]");if(tun){if(!meName()){PENDING={kind:"undo",id:tun.dataset.taskundo};show("tasks");return}await taskAct("task_undo",{id:tun.dataset.taskundo});show("tasks",{force:1});return}
  const tdl=e.target.closest("[data-taskdel]");if(tdl){if(!confirm("Delete this task?"))return;await taskAct("task_delete",{id:tdl.dataset.taskdel});show("tasks",{force:1});return}
  const cf=e.target.closest("[data-cmtf]");if(cf){cmtF=cf.dataset.cmtf;const y=scrollY;await show("guest");scrollTo(0,y);return}
  const cdd=e.target.closest("[data-cmtd]");if(cdd){cmtDays=+cdd.dataset.cmtd;const y=scrollY;await show("guest");scrollTo(0,y);return}
@@ -1001,7 +1023,7 @@ window.addEventListener("shifthub:checked",e=>{CHK={at:ShiftData.status.checkedA
 window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot","goals","grades","tasks"].includes(cur))show(cur)});
 app.addEventListener("input",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
 app.addEventListener("change",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const m=tmin(e.target.value);if(!isNaN(m))e.target.value=ampm(m)}if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});
-setSrc(false);show("home");
+setSrc(false);verCheck();show("home");
 if(window.caches)caches.keys().then(ks=>ks.filter(k=>k.startsWith("shifthub-")&&k!=="shifthub-"+APPVER).forEach(k=>caches.delete(k))).catch(()=>{});
 if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.controller;
  // New version took over: reload once. Guard: only if a worker controlled the page at load, and not twice within 10s.
@@ -1012,9 +1034,11 @@ if("serviceWorker" in navigator){const sw=navigator.serviceWorker,had=!!sw.contr
 
 // v14: force update. If the deployed version differs from this page's APPVER, update the service worker,
 // drop old caches and reload once (guarded per version so it can never loop).
-async function verCheck(reg){try{const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;const v=(await r.json()).v;
- if(!v||v===APPVER)return;const g="shifthub_reloaded_"+v;if(sessionStorage.getItem(g))return;sessionStorage.setItem(g,"1");
- try{await reg.update()}catch(e){}
- await new Promise(res=>{const nw=reg.installing||reg.waiting;if(!nw||nw.state==="activated")return res();const t=setTimeout(res,6000);nw.addEventListener("statechange",()=>{if(nw.state==="activated"){clearTimeout(t);res()}})});try{const ks=await caches.keys();await Promise.all(ks.filter(k=>k.startsWith("shifthub-")).map(k=>caches.delete(k)))}catch(e){}
- if(!window.__shReload){window.__shReload=1;location.reload()}}catch(e){}}
+var VERCHK=null;
+async function verCheck(reg){if(VERCHK)return VERCHK;VERCHK=(async()=>{try{const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;const v=(await r.json()).v;
+ if(!v||v===APPVER)return;const g="shifthub_reloaded_"+v;const tries=+sessionStorage.getItem(g)||0;if(tries>=2)return;sessionStorage.setItem(g,String(tries+1));
+ if(reg){try{await reg.update()}catch(e){}
+  await new Promise(res=>{const nw=reg.installing||reg.waiting;if(!nw||nw.state==="activated")return res();const t=setTimeout(res,4000);nw.addEventListener("statechange",()=>{if(nw.state==="activated"){clearTimeout(t);res()}})})}
+ try{const ks=await caches.keys();await Promise.all(ks.filter(k=>k.startsWith("shifthub-")&&k!=="shifthub-"+v).map(k=>caches.delete(k)))}catch(e){}
+ if(!window.__shReload){window.__shReload=1;location.reload()}}catch(e){}})();return VERCHK}
 

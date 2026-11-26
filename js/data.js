@@ -23,7 +23,7 @@ async function fetchT(u,opt,ms=TIMEOUT){const c=new AbortController(),t=setTimeo
  try{return await fetch(u,Object.assign({signal:c.signal},opt))}catch(e){throw new Error(e.name==="AbortError"?"timed out":"offline or unreachable")}finally{clearTimeout(t)}}
 // One live GET at a time: parallel calls queue up behind each other instead of racing the timeout.
 // Priority: requests for the active screen (focus keys) jump ahead of background/other-screen requests.
-const Q=[];let busy=false,focus=new Set();
+const Q=[];let busy=false,focus=new Set();const opened=new Set();
 function pump(){if(busy||!Q.length)return;let i=Q.findIndex(x=>focus.has(x.key));if(i<0)i=0;const it=Q.splice(i,1)[0];busy=true;
  Promise.resolve().then(it.fn).then(it.res,it.rej).finally(()=>{busy=false;pump()})}
 function serial(fn,key){return new Promise((res,rej)=>{Q.push({fn,key,res,rej});pump()})}
@@ -62,14 +62,15 @@ async function sample(t){if(t==="Meta")return{rows:[],live:false,src:"sample"};
  const r=await fetchT("data/sample/"+t.toLowerCase()+".json",{},SAMPLE_TIMEOUT);if(!r.ok)throw new Error("couldn't load "+t+" data");return{rows:await r.json(),live:false,src:"sample"}}
 // load(tab): fresh live rows -> src "live"; last good live rows (cache) -> src "cached" (refreshes in background); else sample.
 async function load(t,o={}){
+ const first=!opened.has(t);if(first)opened.add(t);
  if(!canTry()||st.bad==="key")return sample(t);
  if(!unsup[t])try{const m=sessionStorage.getItem("shifthub_unsup_"+t);if(m){unsup[t]=m;const clr=()=>{delete unsup[t];try{sessionStorage.removeItem("shifthub_unsup_"+t)}catch(_){}emit(t)};refresh(t).then(clr,e=>{if(!/bad tab|bad kind|unknown tab/i.test(e.message))clr()})}}catch(_){}
  if(unsup[t])return{rows:[],live:true,src:"unsupported",at:0};
  const g=getGood(t),age=g?Date.now()-g.t:1e15;
- if(g&&!o.fresh&&age<FRESH_TTL&&!fail[t])return{rows:g.rows,live:true,src:"live",at:g.t};
- if(g&&!o.fresh){ // show saved data at once; refresh quietly and tell the app when new rows land
+ if(g&&!o.fresh&&!first&&age<FRESH_TTL&&!fail[t])return{rows:g.rows,live:true,src:"live",at:g.t};
+ if(g&&!o.fresh){ // first open refetches at once and does not present the saved copy as current
   if(!fail[t]||!timers[t])refresh(t).then(()=>emit(t),()=>emit(t));
-  return{rows:g.rows,live:true,src:fail[t]?"cached":"live",at:g.t,refreshing:true}}
+  return{rows:g.rows,live:true,src:(first||fail[t])?"cached":"live",at:g.t,refreshing:true}}
  try{const n=await refresh(t);return{rows:n.rows,live:true,src:"live",at:n.t}}
  catch(e){if(unsup[t])return{rows:[],live:true,src:"unsupported",at:0};const g2=getGood(t);if(g2&&st.bad!=="key")return{rows:g2.rows,live:true,src:"cached",at:g2.t};return sample(t)}}
 const cached=t=>!!getGood(t);
