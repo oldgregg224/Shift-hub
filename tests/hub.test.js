@@ -250,14 +250,60 @@ ok(tabList.indexOf("PreRushBank")<0,"PreRushBank is not a tab");
 ok(!/PreRushBank/.test(gs),"Code.gs does not read PreRushBank");
 ok(!/SHIFTHUB_KEY\s*=\s*['"][^'"]+['"]/.test(gs),"no key literal");
 const ver=JSON.parse(fs.readFileSync(path.join(__dirname,"..","version.json"),"utf8"));
-eq(ver.v,"v44","app version v44");
+eq(ver.v,"v45","app version v45");
 const sw=fs.readFileSync(path.join(__dirname,"..","sw.js"),"utf8");
-ok(/shifthub-v44/.test(sw),"service worker cache v44");
+ok(/shifthub-v44/.test(sw)===false&&/shifthub-v45/.test(sw),"service worker cache v45");
 ok(/"callouts"/.test(sw),"service worker caches callouts");
 const app=fs.readFileSync(path.join(__dirname,"..","js","app.js"),"utf8");
-ok(/const APPVER="v44"/.test(app),"in-app version v44");
+ok(/const APPVER="v45"/.test(app),"in-app version v45");
 ok(!/PreRushBank/.test(app),"app does not read PreRushBank");
 ok(/noindex/.test(fs.readFileSync(path.join(__dirname,"..","index.html"),"utf8")),"noindex stays");
+
+// 14. Home and Labor must share one row. Thu 9:20 AM must not treat a future 9 PM as "latest now",
+// and must not show Wednesday 9 AM's 76.7% while the labor screen shows Wednesday 9 PM.
+const laborRows=[
+ {row_type:"DATA",date:"2026-11-25",hour:"09:00",labor_pct:"76.7",actual_hours:"21.29",target_pct:"21.5"},
+ {row_type:"DATA",date:"2026-11-25",hour:"21:00",labor_pct:"20.1",actual_hours:"9.06",target_pct:"21.5"},
+ {row_type:"DATA",date:"2026-11-26",hour:"21:00",labor_pct:"20.1",actual_hours:"9.06",target_pct:"21.5"}];
+const thu=ET("2026-11-26T14:20:00Z");
+const picked=SC.laborPick(laborRows,thu);
+eq(picked&&picked.date,"2026-11-25","latest labor is Wednesday, not a future Thursday 9 PM");
+eq(picked&&picked.hour,21,"9 PM is the latest hour at or before 9:20 AM");
+eq([picked.pct,picked.hours],[20.1,9.06],"percent and hours come from that same row");
+eq(picked.prior,true,"a prior shift is labeled as prior");
+eq(picked.label,"Last night 9 PM","prior evening is last night, not Latest now");
+const morning=[].concat(laborRows,{row_type:"DATA",date:"2026-11-26",hour:"08:00",labor_pct:"22.4",actual_hours:"6.5",target_pct:"21.5"});
+const nowRow=SC.laborPick(morning,thu);
+eq([nowRow.date,nowRow.hour,nowRow.pct,nowRow.prior],["2026-11-26",8,22.4,false],"today's latest hour at or before now wins");
+eq(nowRow.label,"Today · 8 AM","today's earlier hour is not last night");
+ok(!/76\.7/.test(String(nowRow.pct)),"home cannot keep Wednesday morning once a later row exists");
+const appSrc=fs.readFileSync(path.join(__dirname,"..","js","app.js"),"utf8");
+ok((appSrc.match(/ShiftCal\.laborPick\(/g)||[]).length>=2,"home and the labor screen both call laborPick");
+
+// 15. Grade labor percent, low surveys, and a duplicate single-manager card.
+eq(SC.asPct("21.4%"),21.4,"percent sign is already a percent");
+eq(SC.asPct("0.214"),21.4,"a fraction becomes a percent");
+eq(SC.asPct(21.4),21.4,"a percent above 1 stays");
+eq(SC.asPct(""),null,"blank percent");
+const frac=SC.viewGrade({date:"2026-11-26",shift:"6a-2p",manager:"Hana L",grade:"B",labor_pct:"0.231",labor_pct_target:"21",low_surveys:"0.1125"});
+eq(frac.laborPct,23.1,"grade labor fraction is a percent");
+eq(frac.surveyText,"11%","low survey fraction rounds to a percent");
+const blankLabor=SC.viewGrade({date:"2026-11-26",shift:"2p-10p",manager:"Gus K",grade:"C",labor_pct:"",hours:"9.06",hours_cap:"42",low_surveys:"2"});
+eq(Math.round(blankLabor.laborPct*10)/10,21.6,"blank labor percent falls back to hours over the cap");
+eq(blankLabor.surveyText,"2","a count above 1 stays a count");
+eq(SC.surveyText(0),"0","zero surveys stay zero");
+const dup=SC.gradeGroups([
+ {date:"2026-11-26",shift:"2p-10p",manager:"Hana L",grade:"C"},
+ {date:"2026-11-26",shift:"mgr 2p-9p",manager:"Hana L",grade:"C"}],thu,7);
+eq(dup[0].grades.length,1,"shift row stays");
+eq(dup[0].managers.length,0,"the only manager card matching the shift manager is not repeated");
+const keep=SC.gradeGroups([
+ {date:"2026-11-26",shift:"2p-10p",manager:"Hana L",grade:"C"},
+ {date:"2026-11-26",shift:"mgr 2p-9p",manager:"Ian C",grade:"B"}],thu,7);
+eq(keep[0].managers.map(g=>g.manager),["Ian C"],"a different manager still shows");
+
+// 16. My tasks and the assignee list share one name list, including assignees missing from crew.
+eq(TL.peopleNames([["Ana R","Ben T"],["Jason O"],["Hana Lee"]]),["Ana R","Ben T","Hana L","Jason O"],"union of crew, managers, and assignees");
 const block=/\/\*TASKLIB_BEGIN\*\/([\s\S]*?)\/\*TASKLIB_END\*\//.exec(gs);
 ok(!!block,"task lib block");
 let GS=null;if(block){GS=new Function(block[1]+"\nreturn TaskLib;")()}

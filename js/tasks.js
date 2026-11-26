@@ -12,6 +12,8 @@ function clean(v,max){v=String(v==null?"":v).replace(/[\u0000-\u001F\u007F]/g," 
 // "Maria Lopez" -> "Maria L". A single token is kept. Already-short names ("Ana R") stay as written.
 function personName(v){v=clean(v,40);if(!v)return "";const p=v.split(" ").filter(Boolean);if(p.length===1)return p[0];
  const last=p[p.length-1].replace(/[^A-Za-z]/g,"");const ini=last?last[0].toUpperCase():"";return (ini?p[0]+" "+ini:p[0]).slice(0,40)}
+function peopleNames(lists){const set=new Set();(lists||[]).forEach(list=>{(list||[]).forEach(v=>{const n=personName(v);if(n)set.add(n)})});
+ return [...set].sort((a,b)=>a.localeCompare(b))}
 function parseRepeat(s){s=clean(s,48);if(!s||/^none$/i.test(s))return {kind:"none",text:"none"};
  if(/^daily$/i.test(s))return {kind:"daily",text:"daily"};
  const m=/^weekly\s*:\s*(.+)$/i.exec(s);if(!m)return {error:"Repeat must be none, daily, or weekly:Mon,Wed"};
@@ -51,7 +53,7 @@ function sortOpen(tasks,now){return (tasks||[]).slice().sort((a,b)=>{const oa=is
   const da=SC.isoD(a.due_date)||"9999-99-99",db=SC.isoD(b.due_date)||"9999-99-99";if(da!==db)return da<db?-1:1;
   const sa=SC.ORDER[SC.normShift(a.due_shift)];const sb=SC.ORDER[SC.normShift(b.due_shift)];
   if((sa==null?9:sa)!==(sb==null?9:sb))return (sa==null?9:sa)-(sb==null?9:sb);return String(a.title||"").localeCompare(String(b.title||""))})}
-const api={ACTIONS,clean,personName,parseRepeat,nextDue,nextInstance,sameOpen,validateAdd,validateDone,validateUndo,validateDelete,validId,isOverdue,sortOpen,wday};
+const api={ACTIONS,clean,personName,peopleNames,parseRepeat,nextDue,nextInstance,sameOpen,validateAdd,validateDone,validateUndo,validateDelete,validId,isOverdue,sortOpen,wday};
 if(typeof module!=="undefined"&&module.exports)module.exports=api;
 root.TaskLib=api;
 })(typeof window!=="undefined"?window:globalThis);

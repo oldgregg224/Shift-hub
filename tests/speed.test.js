@@ -51,5 +51,11 @@ const mgrHour=P.speedSlice([{row_type:"DATA",date:"2026-11-22",hour:"mgr 2p-9p",
 eq(mgrHour.hours,[],"a mgr label is not a speed hour");
 eq(mgrHour.date,"","a mgr row does not invent a speed day");
 eq(mgrHour.hasTimes,false,"a mgr row is not today's times");
+eq(P.freshLabel({pending:true,hasRows:false,when:"",missing:false,stale:false}),"Checking…","nothing loaded yet");
+eq(P.freshLabel({pending:true,hasRows:true,when:"Thu 6:25 AM",missing:false,stale:false}),"Updated Thu 6:25 AM","a refresh does not flicker to checking when rows are on screen");
+eq(P.freshLabel({pending:false,hasRows:true,when:"",missing:false,stale:false}),"Updated","rows without a stamp are not 'not in Sheet'");
+eq(P.freshLabel({pending:false,hasRows:false,when:"",missing:false,stale:false}),"","a fetch still in doubt says nothing");
+eq(P.freshLabel({pending:false,hasRows:false,when:"",missing:true,stale:false}),"Not in the Sheet yet","only a finished empty tab says it is missing");
+eq(P.freshLabel({pending:false,hasRows:true,when:"Thu 6:25 AM",missing:false,stale:true}),"Updated Thu 6:25 AM · stale","stale keeps the same updated label");
 console.log(`${n-f}/${n} passed`);
 process.exit(f?1:0);

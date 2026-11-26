@@ -55,6 +55,29 @@ function mgrParent(date,raw){const w=mgrWindow(raw);date=isoD(date);if(!w||!date
  return best?{date:best.date,shift:best.shift}:null}
 function shortName(v){v=String(v==null?"":v).trim().replace(/\s+/g," ");if(!v)return "";const p=v.split(" ");if(p.length===1)return p[0];
  const last=p[p.length-1].replace(/[^A-Za-z]/g,"");return (last?p[0]+" "+last[0].toUpperCase():p[0]).trim()}
+function asPct(v){const s=String(v==null?"":v).trim();if(!s||isBlank(s))return null;const x=num(s);if(isNaN(x))return null;
+ const pct=/%/.test(s)||Math.abs(x)>1?x:x*100;return Math.round(pct*10)/10}
+function surveyText(v){const x=typeof v==="number"?v:num(v);if(v==null||String(v).trim()===""||isNaN(x))return "";if(x<=0)return "0";if(x<=1)return Math.round(x*100)+"%";return String(Math.round(x))}
+function laborHour(v){const s=String(v==null?"":v).trim();if(!s||/^(all|total|day|daily|day total)$/i.test(s))return null;
+ const min=tmin(s.split(/\s*(?:-|–|—|\bto\b)\s*/)[0]);if(isNaN(min))return null;const h=Math.floor(min/60);return h>=0&&h<24?h:null}
+function clock12(h){return (h%12||12)+" "+(h>=12?"PM":"AM")}
+// One row for Home and the Labor screen. Today's business window, latest hour at or before now.
+// A later hour on the newest date (9 PM while it is 9 AM) is in the future and is not "latest now".
+// Overnight hours before 6 AM on the night-start date count as the next morning.
+function laborPick(rows,now){const et=etParts(now),cur=currentShift(now);if(!et||!cur)return null;
+ const nowA=dayNum(et.ymd)*1440+et.minutes;const base=dayNum(cur.date);
+ const win=cur.shift==="2p-10p"?[base*1440+14*60,base*1440+22*60]:cur.shift==="10p-6a"?[base*1440+22*60,base*1440+30*60]:[base*1440+6*60,base*1440+14*60];
+ const items=[];(rows||[]).forEach(r=>{if(!r||/^(header|example|note|prep|baseline)$/i.test(String(r.row_type||"").trim()))return;
+  const date=isoD(fld(r,["date","business_date","day"]));const hour=laborHour(fld(r,["hour","time","hour_start","interval"]));if(!date||hour==null)return;
+  const pct=asPct(fld(r,["labor_pct","labor_percent","labor_pct_actual","actual_labor_pct","actual_pct","crew_labor_pct","labor"]));
+  const hours=nOrNull(fld(r,["actual_hours","labor_hours","worked_hours","hours_worked","hours"]));if(pct==null&&hours==null)return;
+  let abs=dayNum(date)*1440+hour*60;
+  if(hour<6&&date===cur.date&&cur.shift==="10p-6a"){const next=dayNum(addDays(date,1))*1440+hour*60;if(next<=nowA)abs=next}
+  if(abs>nowA)return;items.push({r,date,hour,abs,pct,hours})});
+ if(!items.length)return null;const inBiz=items.filter(o=>o.abs>=win[0]&&o.abs<win[1]);const pool=(inBiz.length?inBiz:items).slice().sort((a,b)=>a.abs-b.abs);
+ const best=pool[pool.length-1],prior=!inBiz.length;const yest=addDays(et.ymd,-1);const night=best.hour>=17||best.hour<6;
+ const label=!prior?(best.hour===et.hour?"Now · "+clock12(best.hour):"Today · "+clock12(best.hour)):(night&&(best.date===yest||best.date===et.ymd)?"Last night "+clock12(best.hour):(["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(best.date+"T12:00:00Z").getUTCDay()]+" "+clock12(best.hour)));
+ return {date:best.date,hour:best.hour,pct:best.pct,hours:best.hours,prior,label,row:best.r}}
 function numTxt(n){const t=Math.round(Number(n)*10)/10;return t%1?t.toFixed(1):String(Math.round(t))}
 function etParts(now){const d=now instanceof Date?now:new Date(now);if(isNaN(d))return null;
  const p=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(d);
@@ -141,10 +164,12 @@ function viewGrade(row){if(!row)return null;const raw=String(fld(row,["shift","d
   callouts,calloutCount:callouts!==""&&!isNaN(callN)?callN:null,shortExcused:nOrNull(fld(row,["short_hours_excused"])),adjustedNote:txt(row,["adjusted_note"]),
   goalsHit:txt(row,["goals_hit","goals"]),
   sales:nOrNull(fld(row,["sales","sales_actual"])),salesProj:nOrNull(fld(row,["sales_proj","sales_projection"])),
-  laborPct:nOrNull(fld(row,["labor_pct","labor_percent"])),laborPctTarget:nOrNull(fld(row,["labor_pct_target","labor_target_pct"])),
+  laborPct:(function(){const direct=asPct(fld(row,["labor_pct","labor_percent","labor"]));if(direct!=null)return direct;
+   const h=nOrNull(fld(row,["hours","hours_actual"])),c=nOrNull(fld(row,["hours_cap","cap_hours"]));return h!=null&&c?Math.round(h/c*1000)/10:null})(),
+  laborPctTarget:nOrNull(fld(row,["labor_pct_target","labor_target_pct"])),
   hours:nOrNull(fld(row,["hours","hours_actual"])),hoursCap:nOrNull(fld(row,["hours_cap","cap_hours"])),
   oepe:nOrNull(fld(row,["oepe_sec","oepe"])),kvs:nOrNull(fld(row,["kvs_sec","kvs"])),r2p:nOrNull(fld(row,["r2p_sec","r2p"])),
-  lowSurveys:nOrNull(fld(row,["low_surveys","low_survey"])),
+  lowSurveys:nOrNull(fld(row,["low_surveys","low_survey"])),surveyText:surveyText(fld(row,["low_surveys","low_survey"])),
   why:txt(row,["why"]),runBetter:txt(row,["run_better","runbetter"]),
   lastUpdated:txt(row,["last_updated","updated"])}}
 // Newest first, dates in the last `days` America/New_York calendar days (inclusive).
@@ -164,7 +189,9 @@ function calloutsFor(rows,grade){if(!grade||!grade.date)return [];
 function gradeGroups(rows,now,days){const map=new Map();const take=(date,shift)=>{const k=date+"|"+shift;if(!map.has(k))map.set(k,{date,shift,label:BY[shift]?BY[shift].label:(shift||""),startMin:BY[shift]?BY[shift].start:-1,grades:[],managers:[]});return map.get(k)};
  recentGrades(rows,now,days).forEach(g=>{if(g.mgr&&g.parentDate&&g.parentShift)take(g.parentDate,g.parentShift).managers.push(g);else if(g.mgr)take(g.date,"").managers.push(g);else take(g.date,g.shift||"").grades.push(g)});
  const out=[...map.values()].sort((a,b)=>a.date!==b.date?(a.date<b.date?1:-1):b.startMin-a.startMin);
- out.forEach(g=>g.managers.sort((a,b)=>{const ak=a.date+String(a.mgrStart).padStart(5,"0"),bk=b.date+String(b.mgrStart).padStart(5,"0");return ak<bk?-1:ak>bk?1:0}));
+ const mgrKey=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+ out.forEach(g=>{g.managers.sort((a,b)=>{const ak=a.date+String(a.mgrStart).padStart(5,"0"),bk=b.date+String(b.mgrStart).padStart(5,"0");return ak<bk?-1:ak>bk?1:0});
+  if(g.managers.length===1&&g.grades.some(p=>mgrKey(p.manager)&&mgrKey(p.manager)===mgrKey(g.managers[0].manager)))g.managers=[]});
  return out}
 function newestStamp(rows,keys){keys=Array.isArray(keys)?keys:[keys];let best=null;goalRows(rows).forEach(r=>{keys.forEach(k=>{const v=txt(r,[k]);if(!v)return;const d=new Date(v);if(isNaN(d))return;if(!best||d>best.d)best={v,d,k}})});return best}
 function goalsAreStale(liveStamp,goalStamp,nowMs){if(liveStamp&&liveStamp.d&&!isNaN(liveStamp.d))return nowMs-liveStamp.d>LIVE_STALE_MS;
@@ -176,7 +203,7 @@ function anchorDates(rows,now,dest){const dates=(rows||[]).map(r=>isoD(fld(r,["d
  return rows.map(r=>{const o={};for(const k in r)o[k]=r[k];const d=isoD(fld(r,["date","business_date","day"]));if(d)o.date=addDays(d,delta);
   const due=isoD(r.due_date);if(due)o.due_date=addDays(due,delta);
   ["last_updated","live_updated","updated","done_at","created_at"].forEach(k=>{if(o[k])o[k]=shiftStamp(o[k],delta)});return o})}
-const api={SHIFTS,BY,ORDER,LIVE_STALE_MS,GOAL_STALE_MS,fld,num,isBlank,isData,isoD,dayNum,addDays,tmin,normShift,isMgrShift,goalRows,hourTag,mgrHours,mgrParent,shortName,etParts,nowAbs,currentShift,nextShift,rowWindow,pickCurrent,pickNext,pickNamed,liveBlank,viewGoal,coachParts,goalState,viewGrade,recentGrades,gradeGroups,calloutLine,calloutsFor,gradeLetter,gradeTone,salesStatus,lowerStatus,secStatus,trackTone,newestStamp,goalsAreStale,anchorDates,shiftStamp};
+const api={SHIFTS,BY,ORDER,LIVE_STALE_MS,GOAL_STALE_MS,fld,num,isBlank,isData,isoD,dayNum,addDays,tmin,normShift,isMgrShift,goalRows,hourTag,mgrHours,mgrParent,shortName,asPct,surveyText,laborPick,etParts,nowAbs,currentShift,nextShift,rowWindow,pickCurrent,pickNext,pickNamed,liveBlank,viewGoal,coachParts,goalState,viewGrade,recentGrades,gradeGroups,calloutLine,calloutsFor,gradeLetter,gradeTone,salesStatus,lowerStatus,secStatus,trackTone,newestStamp,goalsAreStale,anchorDates,shiftStamp};
 if(typeof module!=="undefined"&&module.exports)module.exports=api;
 root.ShiftCal=api;
 })(typeof window!=="undefined"?window:globalThis);
