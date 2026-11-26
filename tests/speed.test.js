@@ -56,6 +56,9 @@ eq(P.freshLabel({pending:true,hasRows:true,when:"Thu 6:25 AM",missing:false,stal
 eq(P.freshLabel({pending:false,hasRows:true,when:"",missing:false,stale:false}),"Updated","rows without a stamp are not 'not in Sheet'");
 eq(P.freshLabel({pending:false,hasRows:false,when:"",missing:false,stale:false}),"","a fetch still in doubt says nothing");
 eq(P.freshLabel({pending:false,hasRows:false,when:"",missing:true,stale:false}),"Not in the Sheet yet","only a finished empty tab says it is missing");
+eq(P.freshLabel({pending:false,hasRows:false,when:"",missing:false,emptyTasks:true,stale:false}),"No tasks yet","an empty Tasks tab is not missing from the Sheet");
+eq(P.freshLabel({pending:true,hasRows:true,when:"",missing:false,emptyTasks:false,stale:false}),"Updated","an add that already has a row does not say Checking");
+eq(P.isoDate(46349),"2026-11-23","speed and pre-rush dates accept a Sheets serial");
 eq(P.freshLabel({pending:false,hasRows:true,when:"Thu 6:25 AM",missing:false,stale:true}),"Updated Thu 6:25 AM · stale","stale keeps the same updated label");
 console.log(`${n-f}/${n} passed`);
 process.exit(f?1:0);

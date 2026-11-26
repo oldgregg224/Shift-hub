@@ -25,7 +25,9 @@ function fld(x,al){if(!x)return "";const aliases=Array.isArray(al)?al:[al],m={};
 function num(v){if(v==null||String(v).trim()==="")return NaN;const x=parseFloat(String(v).replace(/[^0-9.\-]/g,""));return x}
 function isBlank(v){v=String(v==null?"":v).trim();return !v||/^[—–-]$/.test(v)||/^n\/?a$/i.test(v)}
 function isData(r){return !!r&&!/^(header|example|note)$/i.test(String(r.row_type||"").trim())}
-function isoD(v){v=String(v==null?"":v).trim();let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+function serialDate(v){const s=String(v==null?"":v).trim();if(!/^\d{5}(\.0+)?$/.test(s))return "";const n=+s;if(!(n>=30000&&n<=80000))return "";
+ return new Date(Date.UTC(1899,11,30)+Math.floor(n)*86400000).toISOString().slice(0,10)}
+function isoD(v){const serial=serialDate(v);if(serial)return serial;v=String(v==null?"":v).trim();let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
  m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);if(m)return(m[3].length===2?"20"+m[3]:m[3])+"-"+m[1].padStart(2,"0")+"-"+m[2].padStart(2,"0");return ""}
 function dayNum(ymd){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd||"");if(!m)return NaN;return Math.round(Date.UTC(+m[1],+m[2]-1,+m[3])/864e5)}
 function addDays(ymd,n){const d=dayNum(ymd);if(isNaN(d))return "";return new Date((d+n)*864e5).toISOString().slice(0,10)}
@@ -76,8 +78,10 @@ function laborPick(rows,now){const et=etParts(now),cur=currentShift(now);if(!et|
   if(abs>nowA)return;items.push({r,date,hour,abs,pct,hours})});
  if(!items.length)return null;const inBiz=items.filter(o=>o.abs>=win[0]&&o.abs<win[1]);const pool=(inBiz.length?inBiz:items).slice().sort((a,b)=>a.abs-b.abs);
  const best=pool[pool.length-1],prior=!inBiz.length;const yest=addDays(et.ymd,-1);const night=best.hour>=17||best.hour<6;
- const label=!prior?(best.hour===et.hour?"Now · "+clock12(best.hour):"Today · "+clock12(best.hour)):(night&&(best.date===yest||best.date===et.ymd)?"Last night "+clock12(best.hour):(["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(best.date+"T12:00:00Z").getUTCDay()]+" "+clock12(best.hour)));
- return {date:best.date,hour:best.hour,pct:best.pct,hours:best.hours,prior,label,row:best.r}}
+ const dayName=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(best.date+"T12:00:00Z").getUTCDay()];
+ const older=best.date<et.ymd;
+ const label=older?dayName+" "+clock12(best.hour)+" · stale":!prior?(best.hour===et.hour?"Now · "+clock12(best.hour):"Today · "+clock12(best.hour)):(night&&(best.date===yest||best.date===et.ymd)?"Last night "+clock12(best.hour):dayName+" "+clock12(best.hour));
+ return {date:best.date,hour:best.hour,pct:best.pct,hours:best.hours,prior,stale:older,label,row:best.r}}
 function numTxt(n){const t=Math.round(Number(n)*10)/10;return t%1?t.toFixed(1):String(Math.round(t))}
 function etParts(now){const d=now instanceof Date?now:new Date(now);if(isNaN(d))return null;
  const p=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(d);
@@ -164,10 +168,15 @@ function viewGrade(row){if(!row)return null;const raw=String(fld(row,["shift","d
   callouts,calloutCount:callouts!==""&&!isNaN(callN)?callN:null,shortExcused:nOrNull(fld(row,["short_hours_excused"])),adjustedNote:txt(row,["adjusted_note"]),
   goalsHit:txt(row,["goals_hit","goals"]),
   sales:nOrNull(fld(row,["sales","sales_actual"])),salesProj:nOrNull(fld(row,["sales_proj","sales_projection"])),
-  laborPct:(function(){const direct=asPct(fld(row,["labor_pct","labor_percent","labor"]));if(direct!=null)return direct;
-   const h=nOrNull(fld(row,["hours","hours_actual"])),c=nOrNull(fld(row,["hours_cap","cap_hours"]));return h!=null&&c?Math.round(h/c*1000)/10:null})(),
+  laborPct:asPct(fld(row,["labor_pct","labor_percent"])),
   laborPctTarget:nOrNull(fld(row,["labor_pct_target","labor_target_pct"])),
   hours:nOrNull(fld(row,["hours","hours_actual"])),hoursCap:nOrNull(fld(row,["hours_cap","cap_hours"])),
+  hoursLine:(function(){if(asPct(fld(row,["labor_pct","labor_percent"]))!=null)return "";
+   const h=nOrNull(fld(row,["hours","hours_actual"])),c=nOrNull(fld(row,["hours_cap","cap_hours"]));if(h==null||c==null)return "";
+   return "Hours "+numTxt(h)+" of "+numTxt(c)+" needed"})(),
+  hoursTone:(function(){if(asPct(fld(row,["labor_pct","labor_percent"]))!=null)return "";
+   const h=nOrNull(fld(row,["hours","hours_actual"])),c=nOrNull(fld(row,["hours_cap","cap_hours"]));if(h==null||c==null)return "";
+   return h>c?"bad":"good"})(),
   oepe:nOrNull(fld(row,["oepe_sec","oepe"])),kvs:nOrNull(fld(row,["kvs_sec","kvs"])),r2p:nOrNull(fld(row,["r2p_sec","r2p"])),
   lowSurveys:nOrNull(fld(row,["low_surveys","low_survey"])),surveyText:surveyText(fld(row,["low_surveys","low_survey"])),
   why:txt(row,["why"]),runBetter:txt(row,["run_better","runbetter"]),

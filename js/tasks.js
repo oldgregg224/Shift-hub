@@ -10,10 +10,12 @@ const DAYNAME=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const DAYMAP={sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
 function clean(v,max){v=String(v==null?"":v).replace(/[\u0000-\u001F\u007F]/g," ").replace(/\s+/g," ").trim();if(v.length>max)v=v.slice(0,max).trim();return v}
 // "Maria Lopez" -> "Maria L". A single token is kept. Already-short names ("Ana R") stay as written.
-function personName(v){v=clean(v,40);if(!v)return "";const p=v.split(" ").filter(Boolean);if(p.length===1)return p[0];
- const last=p[p.length-1].replace(/[^A-Za-z]/g,"");const ini=last?last[0].toUpperCase():"";return (ini?p[0]+" "+ini:p[0]).slice(0,40)}
+function titleWord(w){w=String(w||"");if(!w)return "";return w.length===1?w.toUpperCase():w[0].toUpperCase()+w.slice(1).toLowerCase()}
+function personName(v){v=clean(v,40);if(!v)return "";const p=v.split(" ").filter(Boolean);if(p.length===1)return titleWord(p[0]);
+ const last=p[p.length-1].replace(/[^A-Za-z]/g,"");const ini=last?last[0].toUpperCase():"";const first=titleWord(p[0]);return (ini?first+" "+ini:first).slice(0,40)}
 function peopleNames(lists){const set=new Set();(lists||[]).forEach(list=>{(list||[]).forEach(v=>{const n=personName(v);if(n)set.add(n)})});
- return [...set].sort((a,b)=>a.localeCompare(b))}
+ const all=[...set],full=all.filter(n=>/\s/.test(n));
+ return all.filter(n=>{if(/\s/.test(n))return true;const hits=full.filter(f=>f.toLowerCase().startsWith(n.toLowerCase()+" "));return hits.length!==1}).sort((a,b)=>a.localeCompare(b))}
 function parseRepeat(s){s=clean(s,48);if(!s||/^none$/i.test(s))return {kind:"none",text:"none"};
  if(/^daily$/i.test(s))return {kind:"daily",text:"daily"};
  const m=/^weekly\s*:\s*(.+)$/i.exec(s);if(!m)return {error:"Repeat must be none, daily, or weekly:Mon,Wed"};

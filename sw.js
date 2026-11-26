@@ -1,4 +1,4 @@
-const C="shifthub-v45",SAMPLES=["brief","labor","events","speed","smg","roster","comments","coverage","crew","skills","daysoff","weekhours","availability","schoolcal","outofstock","prerush","otrisk","shiftgoals","shiftgrades","callouts","tasks"].map(t=>"data/sample/"+t+".json"),
+const C="shifthub-v46",SAMPLES=["brief","labor","events","speed","smg","roster","comments","coverage","crew","skills","daysoff","weekhours","availability","schoolcal","outofstock","prerush","otrisk","shiftgoals","shiftgrades","callouts","tasks"].map(t=>"data/sample/"+t+".json"),
 A=["./","index.html","styles.css","config.js","js/icons.js","icon.svg","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","icons/apple-touch-icon.png","js/data.js","js/floor.js","js/cover.js","js/present.js","js/shift.js","js/tasks.js","js/app.js","manifest.json",...SAMPLES];
 // Install fresh copies (bypass HTTP cache) and take over right away.
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(A.map(u=>new Request(u,{cache:"reload"})))))});
