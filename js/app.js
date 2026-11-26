@@ -57,9 +57,11 @@ async function setUpd(tab,rows,live,r){const scr0=cur;if(tab==="Speed"&&cur==="r
  const rowStamp=ShiftCal.newestStamp(stampRows,["last_updated","updated","live_updated"]);if(rowStamp&&rowStamp.d&&(!t||!t.d||rowStamp.d>t.d))t=rowStamp;
  const stale=tab==="ShiftGoals"?(!pend&&ShiftCal.goalsAreStale(liveStamp,goalStamp,Date.now())):(!pend&&!!(t&&t.d&&Date.now()-t.d>thr));
  CUR={src:r.src,stale,tab,at:r.at,refreshing:!!(pend||r.refreshing)};
- const hasRows=!!(rows&&rows.length),when=t&&t.d?fmtT(t.d):"";
- const missing=!pend&&r.src==="live"&&!hasRows&&!when;
- let txt=ShiftPresent.freshLabel({pending:!!pend,hasRows,when,missing,stale:!!stale&&!pend});
+ const localN=tab==="Tasks"?locGet().rows.length:0;
+ const hasRows=!!(rows&&rows.length)||localN>0,when=t&&t.d?fmtT(t.d):"";
+ const missing=!pend&&r.src==="live"&&!hasRows&&!when&&tab!=="Tasks";
+ const emptyTasks=tab==="Tasks"&&!pend&&r.src==="live"&&!hasRows;
+ let txt=ShiftPresent.freshLabel({pending:!!pend,hasRows,when,missing,emptyTasks,stale:!!stale&&!pend});
  if(r.src==="cached"&&r.at&&txt)txt+=" · saved "+new Date(r.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  u.textContent=txt;u.classList.toggle("stale",stale||r.src==="cached");TABST[cur]={c:Object.assign({},CUR),upd:txt,cls:stale||r.src==="cached"}}
 const TABST={};
@@ -90,7 +92,7 @@ const hh=h=>{const ap=h>=12?" PM":" AM";return (h%12||12)+":00"+ap},hs=h=>(h%12|
 const isTot=x=>/^(all|total|day|daily|day total)$/i.test(String(fld(x,["hour","time","hour_start","interval"])).trim())||/total|summary/i.test(String(x.row_type||""));
 // rows -> {hours:[{h,x}] for the latest date (one per hour, last wins), total:x|null}; has(x) says a row carries data.
 function hourly(r,has){r=(r||[]).filter(x=>!/^header$/i.test(String(x.row_type||"")));
- const dateOf=x=>String(fld(x,["date","business_date","day"])||"");
+ const dateOf=x=>ShiftCal.isoD(fld(x,["date","business_date","day"]))||"";
  const tots=r.filter(isTot),hr=r.filter(x=>!isTot(x)&&hourOf(fld(x,["hour","time","hour_start","interval"]))!=null);
  const dates=[...new Set(hr.filter(has).map(dateOf))].sort();const d=dates.pop();
  const by=new Map();hr.filter(x=>d===undefined||dateOf(x)===d||!dateOf(x)).forEach(x=>{const h=hourOf(fld(x,["hour","time","hour_start","interval"]));const o=by.get(h);if(!o||has(x)||!has(o.x))by.set(h,{h,x})});
@@ -156,7 +158,7 @@ async home(){const r=await get("Brief"),b=r[0]||{};const EX=homeExtras();
  const la=laborNow&&laborNow.pct!=null?laborNow.pct:n(b.labor_actual_pct);
  const ss=isNaN(sp)?"neutral":status(sa,sp,"sales"),ls=isNaN(lp)||isNaN(la)?"neutral":status(la,lp,"labor");
  const lhrs=laborNow&&laborNow.hours!=null?(Math.round(laborNow.hours*10)/10)+" h":"";
- const lmeta=[lhrs,laborNow&&laborNow.prior?laborNow.label:"",isNaN(lp)?"":"target "+pct(lp)].filter(Boolean).join(" · ");
+ const lmeta=[lhrs,laborNow?laborNow.label:"",isNaN(lp)?"":"target "+pct(lp)].filter(Boolean).join(" · ");
  const otr=X.ot,otN=otr.length?otr.map(x=>crewNm(x.first_name)).join(", "):b.overtime_watch_first_names;
  const ot=otr.length?otr.length:listCount(b.overtime_watch_first_names),od=listCount(b.overdue_checklists),cm=n(b.new_smg_comment_count)||0,hr=n(b.open_harri_requests)||0;
  const rush=b.rush_banner?`<div class="alert">${I("siren")}<div><b>${esc(b.rush_banner)}</b><span>Rush today</span></div></div>`:"";
@@ -187,8 +189,8 @@ async labor(){const r=await get("Labor");
  const picked=ShiftCal.laborPick(r,new Date());
  const etNow=ShiftCal.etParts(new Date());
  const fallback=pickNow(hours,has);
- let shown=picked?hours.filter(o=>{const d=String(fld(o.x,["date","business_date","day"])||"").slice(0,10);if(d&&d!==picked.date)return false;return !etNow||d<etNow.ymd||o.h<=etNow.hour}):hours;
- if(picked&&!shown.length)shown=(r||[]).map(x=>{const d=String(fld(x,["date","business_date","day"])||"").slice(0,10);const h=hourOf(fld(x,["hour","time","hour_start","interval"]));return {h,x,d}}).filter(o=>o.h!=null&&o.d===picked.date&&(!etNow||o.d<etNow.ymd||o.h<=etNow.hour));
+ let shown=picked?hours.filter(o=>{const d=ShiftCal.isoD(fld(o.x,["date","business_date","day"]));if(d&&d!==picked.date)return false;return !etNow||d<etNow.ymd||o.h<=etNow.hour}):hours;
+ if(picked&&!shown.length)shown=(r||[]).map(x=>{const d=ShiftCal.isoD(fld(x,["date","business_date","day"]));const h=hourOf(fld(x,["hour","time","hour_start","interval"]));return {h,x,d}}).filter(o=>o.h!=null&&o.d===picked.date&&(!etNow||o.d<etNow.ymd||o.h<=etNow.hour));
  const tdy=ymd(new Date()),tot=total&&(String(fld(total,["date","business_date","day"])||"").slice(0,10)||tdy)===tdy?total:null;
  return keyAlert()+(picked?card(picked.label,picked.row):(fallback?card(fallback.lbl,fallback.o.x):""))+(tot&&(!picked||!picked.prior)?card("Day total",tot):"")+
  (shown.length?`<div class="sec">By hour</div><div class="list">${shown.map(({h,x})=>{const l=num(x,LP),t=tgt(x),call=fld(x,["call","labor_call","action"]),st=isNaN(t)?"neutral":status(l,t,"labor"),hm=hrs(x),sa=num(x,SL);
@@ -317,8 +319,7 @@ const SHIFTS=[["6a-2p","6 AM – 2 PM"],["2p-10p","2 PM – 10 PM"],["10p-6a","1
 const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 function shiftNow(){const d=new Date(),h=d.getHours();const op=new Date(d);if(h<6)op.setDate(op.getDate()-1);
  return{date:ymd(op),shift:h>=6&&h<14?"6a-2p":h>=14&&h<22?"2p-10p":"10p-6a",op}}
-const isoD=v=>{v=String(v||"").trim();let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
- m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);if(m)return(m[3].length==2?"20"+m[3]:m[3])+"-"+m[1].padStart(2,"0")+"-"+m[2].padStart(2,"0");const d=new Date(v);return isNaN(d)?v:ymd(d)};
+const isoD=v=>{const s=ShiftCal.isoD(v);if(s)return s;const d=new Date(v);return v&&!isNaN(d)&&typeof v!=="number"?ymd(d):String(v||"")};
 const normShift=v=>{const t=String(v||"").toLowerCase().replace(/\s|:00|m\b/g,"").replace(/[–—to]+/g,"-");return t.startsWith("6a")?"6a-2p":t.startsWith("2p")?"2p-10p":t.startsWith("10p")?"10p-6a":String(v||"").trim()};
 async function roster(){const r=await ShiftData.load("Roster");let rows=(r.rows||[]).filter(x=>String(x.row_type||"").toUpperCase()!=="HEADER").map(x=>Object.assign({},x,{date:isoD(x.date),shift:normShift(x.shift),role:String(x.role||"").trim()}));
  if(!r.live&&rows.length){// sample: move EXAMPLE dates so the first one is "today"
@@ -541,7 +542,9 @@ async function homeExtras(){const ld=t=>ShiftData.load(t).catch(()=>({rows:[],sr
 function oosHome(rows){if(!rows||!rows.length)return "";const it=rows.map(x=>({x,s:since_(x.since)})).sort((a,b)=>(a.s.ms??Infinity)-(b.s.ms??Infinity));
  const nm=it.slice(0,3).map(o=>o.x.item).join(", ")+(it.length>3?" +"+(it.length-3)+" more":"");
  return `<button class="card tool" type="button" data-go="outofstock">${I("package")}<span><b>Out of stock · ${it.length}</b><span class="meta">${esc(nm)}</span></span>${I("chevron-right","cv")}</button>`}
-function preHome(rows){if(!rows||!rows.length)return "";const G=preGroups(rows),nx=preNext(G);
+function preHome(rows){if(!rows||!rows.length)return "";const head=ShiftPresent.preRushHeader(ShiftPresent.preShift(rows),ShiftCal.currentShift(new Date()));
+ if(head&&!head.match)return `<button class="card tool" type="button" data-go="prerush">${I("timer")}<span><b>Last shift's pre-rush</b><span class="meta">${esc(head.warning)}</span></span>${chip("warn","Last shift")}${I("chevron-right","cv")}</button>`;
+ const G=preGroups(rows),nx=preNext(G);
  const t=nx?"Pre-rush · "+capW(nx.k):"Pre-rush checklist",m=nx?[nx.first!=null?"check by "+clock(hhmm(nx.first)):"",nx.done+" of "+nx.it.length+" done"].filter(Boolean).join(" · "):rows.length+" items · "+G.map(g=>capW(g.k)).join(", ");
  return `<button class="card tool" type="button" data-go="prerush">${I("timer")}<span><b>${esc(t)}</b><span class="meta">${esc(m)}</span></span>${I("chevron-right","cv")}</button>`}
 // Screens reached from Home or Tools go back where they came from.
@@ -662,17 +665,19 @@ function calloutBlock(g,pack){if(!g||ShiftCal.isBlank(g.callouts)||(g.calloutCou
  return `<details class="more"><summary>Who called out${I("chevron-down","cv")}</summary>${body}</details>`}
 function gradeCard(g,pack,sub,groupDate){const pair=(lbl,actual,target,kind,fmt)=>{const st=kind==="sales"?ShiftCal.salesStatus(actual,target):ShiftCal.lowerStatus(actual,target);
   return cmp(lbl,actual==null?"—":fmt(actual),target==null?"":"target "+fmt(target),st,kind==="sales"?saleWord(st):null)};
- const line=ShiftCal.calloutLine(g);const hit=g.goalsHit?chip("neutral",g.goalsHit+" hit"):"";
+ const line=ShiftCal.calloutLine(g);const shortHit=g.goalsHit&&g.goalsHit.length<=16;
+ const hit=shortHit?chip("neutral",g.goalsHit+" hit"):"";
  const head=sub?`<div class="subhead"><span><b>${esc(g.managerLabel)}</b>${g.mgrHours?` <span class="as-written">· ${esc(g.mgrHours)}</span>`:""}</span>${hit}</div>`:`<div class="lbl stack"><span class="when">${esc(fmtDay(g.date))} · ${esc(g.label||g.shift||"")}</span> ${hit}</div>`;
  const moved=sub&&groupDate&&g.date&&g.date!==groupDate?`<div class="meta">These hours are on ${esc(fmtDay(g.date))}.</div>`:"";
  return `<div class="card${sub?" sub":""}">${head}
   <div class="grade-letter${sub?" sm":""} ${esc(g.tone)}">${esc(g.letter||"—")}</div>
   ${sub?"":`<div class="mgr"><b>${esc(g.managerLabel)}</b><span class="meta" style="margin:0">Manager</span></div>`}
-  ${pair("Sales",g.sales,g.salesProj,"sales",money)+pair("Labor",g.laborPct,g.laborPctTarget,"labor",pct)+pair("Hours",g.hours,g.hoursCap,"labor",hrsTxt)}
+  ${pair("Sales",g.sales,g.salesProj,"sales",money)+(g.laborPct!=null?pair("Labor",g.laborPct,g.laborPctTarget,"labor",pct)+pair("Hours",g.hours,g.hoursCap,"labor",hrsTxt):g.hoursLine?cmp(g.hoursLine,"","",g.hoursTone,g.hoursTone==="bad"?"Over":"On target"):pair("Hours",g.hours,g.hoursCap,"labor",hrsTxt))}
   ${cmp("OEPE",mmss(g.oepe==null?NaN:g.oepe),"","neutral")+cmp("KVS",mmss(g.kvs==null?NaN:g.kvs),"","neutral")+cmp("R2P",mmss(g.r2p==null?NaN:g.r2p),"","neutral")}
   ${g.lowSurveys==null?"":cmp("Low surveys",g.surveyText||String(g.lowSurveys),"",g.lowSurveys>0?"bad":"good",g.lowSurveys>0?"Low":"None")}
   ${line?`<p class="meta" style="-webkit-line-clamp:4">${esc(line)}</p>`:""}
   ${g.adjustedNote?`<p class="meta" style="-webkit-line-clamp:8">${esc(g.adjustedNote)}</p>`:""}
+  ${!shortHit&&g.goalsHit?`<p class="meta" style="-webkit-line-clamp:6">${esc(g.goalsHit)}</p>`:""}
   ${g.why?`<p class="meta" style="-webkit-line-clamp:8"><b>Why:</b> ${esc(g.why)}</p>`:""}
   ${g.runBetter?`<p class="meta" style="-webkit-line-clamp:8"><b>Run it better:</b> ${esc(g.runBetter)}</p>`:""}
   ${moved}${calloutBlock(g,pack)}
@@ -690,7 +695,7 @@ let TASKVIEW="mine",TASKSHIFT="",TASKREPEAT="none",TASKDAYS=[],TASKERR="",TASKBU
 const jget=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||"");return v==null?fb:v}catch(e){return fb}};
 const meName=()=>{try{return TaskLib.personName(localStorage.getItem(MEK)||"")}catch(e){return ""}};
 async function saveMe(raw){const nm=TaskLib.personName(raw);if(!nm)return;try{localStorage.setItem(MEK,nm)}catch(e){}
- const p=PENDING;PENDING=null;if(p&&p.kind==="done")await taskAct("task_done",{id:p.id,done_by:nm});else if(p&&p.kind==="undo")await taskAct("task_undo",{id:p.id});show("tasks",{force:1})}
+ TASKERR="";const p=PENDING;PENDING=null;if(p&&p.kind==="done")await taskAct("task_done",{id:p.id,done_by:nm});else if(p&&p.kind==="undo")await taskAct("task_undo",{id:p.id});show("tasks",{force:1})}
 const qGet=()=>{const q=jget(TQK,[]);return Array.isArray(q)?q:[]};
 const qSet=a=>{try{localStorage.setItem(TQK,JSON.stringify(a))}catch(e){}};
 const locGet=()=>{const o=jget(TLK,{rows:[],hide:[]})||{rows:[],hide:[]};return {rows:Array.isArray(o.rows)?o.rows:[],hide:Array.isArray(o.hide)?o.hide:[]}};
@@ -719,24 +724,32 @@ async function flushTasks(){if(FLUSHING||!taskLive())return null;const q=qGet();
    catch(e){const msg=e&&e.message||"";if(/bad action|bad tab|unknown action/i.test(msg)){qSet([]);const loc=locGet();loc.rows=loc.rows.filter(r=>!r._pending);locSet(loc);return {unsupported:true,error:msg}}
     if(/bad key/i.test(msg)){qSet(q.slice(i));return {error:msg}}qSet(q.slice(i));return {offline:true,error:msg}}}
   qSet([]);return null}finally{FLUSHING=false}}
-async function taskAct(action,body){if(TASKBUSY)return {error:"Working…"};TASKBUSY=true;TASKERR="";
- try{const v=action==="task_add"?{ok:true,row:body}:action==="task_done"?TaskLib.validateDone(body):action==="task_undo"?TaskLib.validateUndo(body):TaskLib.validateDelete(body);
-  if(!v.ok){TASKERR=v.error;return v}
-  const now=new Date().toISOString();let localId="",taskId=v.id||"";
-  if(action==="task_add"){localId="tmp"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-   patchTask(localId,Object.assign({},body,{id:localId,status:"open",created_at:now,done_by:"",done_at:"",last_updated:now,_pending:1}))}
-  else if(action==="task_done")patchTask(taskId,{status:"done",done_by:v.done_by,done_at:now,last_updated:now,_pending:1});
-  else if(action==="task_undo")patchTask(taskId,{status:"open",done_by:"",done_at:"",last_updated:now,_pending:1});
-  else{const loc=locGet();loc.rows=loc.rows.filter(r=>String(r.id)!==String(taskId));loc.hide.push(taskId);locSet(loc)}
-  if(!taskLive()){if(action==="task_add")patchTask(localId,{_pending:false});else if(action!=="task_delete")patchTask(taskId,{_pending:false});
-   if(action==="task_done"){const base=TASKROWS.find(r=>String(r.id)===String(taskId))||{};const over=locGet().rows.find(r=>String(r.id)===String(taskId))||{};const nxt=TaskLib.nextInstance(Object.assign({},base,over));
-    if(nxt&&!TaskLib.sameOpen(locGet().rows,nxt)){const nid="tmp"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);patchTask(nid,Object.assign({},nxt,{id:nid,created_at:now,last_updated:now,_pending:false}))}}
-   return {local:true}}
-  qSet(qGet().concat([{action,localId,taskId,body:action==="task_add"?body:action==="task_done"?{id:taskId,done_by:v.done_by}:{id:taskId}}]));
-  const res=await flushTasks();
-  if(res&&res.unsupported){TASKERR="Tasks needs the Apps Script update (v30). This change was not saved.";return res}
-  if(res&&res.error&&!res.offline){TASKERR=res.error;return res}
-  return res||{ok:true}}finally{TASKBUSY=false}}
+let TASKSNAP=null;
+function locCopy(){const o=locGet();return {rows:(o.rows||[]).map(r=>Object.assign({},r)),hide:(o.hide||[]).slice()}}
+function spawnNext(taskId,now,pending){const base=TASKROWS.find(r=>String(r.id)===String(taskId))||{};const over=locGet().rows.find(r=>String(r.id)===String(taskId))||{};
+ const nxt=TaskLib.nextInstance(Object.assign({},base,over));if(!nxt||TaskLib.sameOpen(locGet().rows,nxt))return;
+ const nid="tmp"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+ patchTask(nid,Object.assign({},nxt,{id:nid,created_at:now,last_updated:now,_pending:pending?1:0,_spawn:1}))}
+function doneFlush(res){TASKBUSY=false;
+ if(res&&res.unsupported){TASKERR="Tasks needs the Apps Script update (v30). This change was not saved.";if(TASKSNAP)locSet(TASKSNAP);qSet(qGet().slice(1))}
+ else if(res&&res.error&&!res.offline){TASKERR="Couldn't save that. It's back how it was.";if(TASKSNAP)locSet(TASKSNAP);qSet(qGet().slice(1))}
+ else{const loc=locGet();loc.rows=loc.rows.filter(r=>!r._spawn);locSet(loc);TASKSNAP=null}
+ if(cur==="tasks")show("tasks",{force:1})}
+async function taskAct(action,body){if(TASKBUSY)return {error:"Working…"};
+ const v=action==="task_add"?{ok:true,row:body}:action==="task_done"?TaskLib.validateDone(body):action==="task_undo"?TaskLib.validateUndo(body):TaskLib.validateDelete(body);
+ if(!v.ok){TASKERR=v.error;return v}
+ TASKERR="";TASKSNAP=locCopy();
+ const now=new Date().toISOString();let localId="",taskId=v.id||"";
+ if(action==="task_add"){localId="tmp"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  patchTask(localId,Object.assign({},body,{id:localId,status:"open",created_at:now,done_by:"",done_at:"",last_updated:now,_pending:1}))}
+ else if(action==="task_done"){patchTask(taskId,{status:"done",done_by:v.done_by,done_at:now,last_updated:now,_pending:1});spawnNext(taskId,now,taskLive())}
+ else if(action==="task_undo")patchTask(taskId,{status:"open",done_by:"",done_at:"",last_updated:now,_pending:1});
+ else{const loc=locGet();loc.rows=loc.rows.filter(r=>String(r.id)!==String(taskId));loc.hide.push(taskId);locSet(loc)}
+ if(!taskLive()){if(action==="task_add")patchTask(localId,{_pending:0});else if(action!=="task_delete")patchTask(taskId,{_pending:0});
+  const loc=locGet();loc.rows.forEach(r=>{if(r._spawn)r._pending=0});locSet(loc);TASKSNAP=null;return {local:true,optimistic:true}}
+ qSet(qGet().concat([{action,localId,taskId,body:action==="task_add"?body:action==="task_done"?{id:taskId,done_by:v.done_by}:{id:taskId}}]));
+ TASKBUSY=true;flushTasks().then(doneFlush,e=>doneFlush({error:(e&&e.message)||"Couldn't save"}));
+ return {ok:true,optimistic:true}}
 function taskHome(r){if(!r||r.src==="slow"||r.src==="error")return "";
  if(r.src==="unsupported")return `<button class="card tool" type="button" data-go="tasks">${I("clipboard-list")}<span><b>Tasks need the Apps Script update</b><span class="meta">Redeploy the script (v30) to serve Tasks</span></span>${chip("warn","Pending")}${I("chevron-right","cv")}</button>`;
  const open=taskRowsOf(r).filter(t=>String(t.status||"open").toLowerCase()!=="done");const me=meName();
@@ -744,12 +757,12 @@ function taskHome(r){if(!r||r.src==="slow"||r.src==="error")return "";
  const od=mine.filter(t=>TaskLib.isOverdue(t,new Date())).length;const n=mine.length;
  return `<button class="card tool" type="button" data-go="tasks">${I("clipboard-list")}<span><b>Tasks · ${n} open</b><span class="meta">${esc(me?me+(od?" · "+od+" overdue":" · yours"):"Everyone"+(od?" · "+od+" overdue":""))}</span></span>${n?chip(od?"bad":"warn",String(n)):chip("good","Clear")}${I("chevron-right","cv")}</button>`}
 function taskLine(t,mode){const od=String(t.status||"").toLowerCase()!=="done"&&TaskLib.isOverdue(t,new Date());
- const sub=[t.station,t.due_date?fmtDay(t.due_date):"",t.due_shift&&ShiftCal.BY[t.due_shift]?ShiftCal.BY[t.due_shift].label:"",t.repeat&&t.repeat!=="none"?t.repeat:"",t._pending?"Pending sync":""].filter(Boolean).join(" · ");
- const doneBtn=mode==="all"&&String(t.status||"open").toLowerCase()!=="done"?`<button class="btn" type="button" data-taskdone="${esc(t.id)}">Done</button>`:"";
+ const sub=[t.station,t.due_date?fmtDay(t.due_date):"",t.due_shift&&ShiftCal.BY[t.due_shift]?ShiftCal.BY[t.due_shift].label:"",t.repeat&&t.repeat!=="none"?t.repeat:"",t._pending?"Saving…":""].filter(Boolean).join(" · ");
+ const doneBtn=mode==="all"&&String(t.status||"open").toLowerCase()!=="done"?(t._pending?`<button class="btn" type="button" disabled>Saving…</button>`:`<button class="btn" type="button" data-taskdone="${esc(t.id)}">Done</button>`):"";
  const undo=String(t.status||"").toLowerCase()==="done"?`<button class="btn" type="button" data-taskundo="${esc(t.id)}">Undo</button>`:"";
  const del=mode!=="mine"?`<button class="btn sq" type="button" data-taskdel="${esc(t.id)}" aria-label="Delete ${esc(t.title)}">${I("trash")}</button>`:"";
  const openAttrs=mode==="mine"?`button type="button" class="row" data-taskdone="${esc(t.id)}"`:`div class="row"`;
- return `<${openAttrs}><span class="v txt">${esc(t.title)}${t.note?`<small style="white-space:normal">${esc(t.note)}</small>`:""}${sub?`<small>${esc(sub)}</small>`:""}</span>${od?chip("bad","Overdue"):""}${t._pending?chip("warn","Pending"):""}${String(t.status).toLowerCase()==="done"&&t.done_by?chip("good",t.done_by):""}${doneBtn}${undo}${del}</${mode==="mine"?"button":"div"}>`}
+ return `<${openAttrs}><span class="v txt">${esc(t.title)}${t.note?`<small style="white-space:normal">${esc(t.note)}</small>`:""}${sub?`<small>${esc(sub)}</small>`:""}</span>${od?chip("bad","Overdue"):""}${t._pending?chip("warn","Saving…"):""}${String(t.status).toLowerCase()==="done"&&t.done_by?chip("good",t.done_by):""}${doneBtn}${undo}${del}</${mode==="mine"?"button":"div"}>`}
 function taskScreen(rows,names){TASKROWS=rows||[];const me=meName();const now=new Date();const open=rows.filter(t=>String(t.status||"open").toLowerCase()!=="done");
  const mine=TaskLib.sortOpen(open.filter(t=>me&&TaskLib.personName(t.assignee).toLowerCase()===me.toLowerCase()),now);
  const today=(ShiftCal.etParts(now)||{}).ymd||"";
@@ -782,7 +795,7 @@ function taskScreen(rows,names){TASKROWS=rows||[];const me=meName();const now=ne
    +(doneToday.length?`<div class="sec">Done today (${doneToday.length})</div><div class="list">${doneToday.map(t=>taskLine(t,"all")).join("")}</div>`:"");
  }
  return backBtn()+`<div class="tip">${I("info")}<span>Check-offs show who tapped done.</span></div>`+seg+who+err+sync+(TASKVIEW==="mine"?"":ask)+body}
-S.tasks=async()=>{const flushed=await flushTasks();if(flushed&&flushed.unsupported)TASKERR="Tasks needs the Apps Script update (v30). This change was not saved.";
+S.tasks=async()=>{if(!TASKERR&&qGet().length&&taskLive()&&!FLUSHING)flushTasks().then(doneFlush,e=>doneFlush({error:(e&&e.message)||"Couldn't save"}));
  const r=await loadT("Tasks");
  if(r.src==="unsupported")return backBtn()+`<div class="tip">${I("info")}<span>Check-offs show who tapped done.</span></div>`+pendCard("Tasks","Tasks");
  const crew=await within(ShiftData.load("Crew"),2000,null);const roster=await within(ShiftData.load("Roster"),2000,null);const tasks=taskRowsOf(r);
@@ -871,7 +884,7 @@ S.crewnotes=async()=>{const TS=within(toolSync(),150,null);const rows=(await bli
  ${rows.length?`<div class="list">${rows.slice(0,30).map(x=>`<div class="row" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(x.first_name)}</b>${chip(NST[x.type]||"neutral",x.type)}</div><div>${esc(x.note)}</div><div style="display:flex;justify-content:space-between;align-items:center"><span class="note-ts">${esc(FloorCompat.normDate(x.date))}${x._pending?" "+chip("warn","Pending sync"):""}</span><button class="btn" type="button" data-cndel="${esc(x.id)}" aria-label="Delete note for ${esc(x.first_name)}">${I("trash")}Delete</button></div></div>`).join("")}</div>`:empty("No crew notes yet")}`+store("crewnotes")};
 
 let TRIG="open",CHK=null;const chkTxt=()=>CHK&&CHK.at?"Last checked "+new Date(CHK.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit"})+" ("+CHK.why+")":"Last checked: not yet";
-const APPVER="v45";
+const APPVER="v46";
 const swCache=async()=>{try{const k=(await caches.keys()).filter(x=>x.startsWith("shifthub-"));return k.length?" · cache "+esc(k.join(", ")):""}catch(e){return ""}};
 let KEYJUST=false;
 S.settings=async()=>{$("#upd").textContent="";const has=!!ShiftData.Key.get();
@@ -961,9 +974,9 @@ app.addEventListener("click",async e=>{const rt=e.target.closest("[data-retry]")
  const tadd=e.target.closest("[data-taskadd]");if(tadd){if(TASKBUSY||tadd.disabled)return;tadd.disabled=true;const assignee=($("#ta")||{}).value||"";const rep=TASKREPEAT==="weekly"?"weekly:"+(TASKDAYS.length?TASKDAYS.slice().sort((a,b)=>["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(a)-["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].indexOf(b)).join(","):"Mon"):TASKREPEAT;
   const v=TaskLib.validateAdd({title:($("#tt")||{}).value,note:($("#tn")||{}).value,assignee,station:($("#ts")||{}).value,due_date:($("#tdate")||{}).value,due_shift:TASKSHIFT,repeat:rep,created_by:meName()});
   if(!v.ok){tadd.disabled=false;TASKERR=v.error;show("tasks");return}TASKERR="";const added=await taskAct("task_add",v.row);
-  if($("#tt"))$("#tt").value="";if($("#tn"))$("#tn").value="";if(added&&added.error&&!added.ok&&!added.local){tadd.disabled=false}show("tasks",{force:1});return}
- const tdn=e.target.closest("[data-taskdone]");if(tdn){if(!meName()){PENDING={kind:"done",id:tdn.dataset.taskdone};show("tasks");return}await taskAct("task_done",{id:tdn.dataset.taskdone,done_by:meName()});show("tasks",{force:1});return}
- const tun=e.target.closest("[data-taskundo]");if(tun){if(!meName()){PENDING={kind:"undo",id:tun.dataset.taskundo};show("tasks");return}await taskAct("task_undo",{id:tun.dataset.taskundo});show("tasks",{force:1});return}
+  if($("#tt"))$("#tt").value="";if($("#tn"))$("#tn").value="";if(added&&added.error&&!added.ok&&!added.optimistic&&!added.local)tadd.disabled=false;show("tasks",{force:1});return}
+ const tdn=e.target.closest("[data-taskdone]");if(tdn){if(TASKBUSY)return;if(!meName()){PENDING={kind:"done",id:tdn.dataset.taskdone};TASKERR="";show("tasks");return}await taskAct("task_done",{id:tdn.dataset.taskdone,done_by:meName()});show("tasks",{force:1});return}
+ const tun=e.target.closest("[data-taskundo]");if(tun){if(TASKBUSY)return;if(!meName()){PENDING={kind:"undo",id:tun.dataset.taskundo};TASKERR="";show("tasks");return}await taskAct("task_undo",{id:tun.dataset.taskundo});show("tasks",{force:1});return}
  const tdl=e.target.closest("[data-taskdel]");if(tdl){if(!confirm("Delete this task?"))return;await taskAct("task_delete",{id:tdl.dataset.taskdel});show("tasks",{force:1});return}
  const cf=e.target.closest("[data-cmtf]");if(cf){cmtF=cf.dataset.cmtf;const y=scrollY;await show("guest");scrollTo(0,y);return}
  const cdd=e.target.closest("[data-cmtd]");if(cdd){cmtDays=+cdd.dataset.cmtd;const y=scrollY;await show("guest");scrollTo(0,y);return}
@@ -1021,7 +1034,8 @@ setInterval(()=>{LASTPULL=0;pull("3-min timer")},180000);
 // v37: Settings "Last checked" (any live refetch completing, even with no data change).
 window.addEventListener("shifthub:checked",e=>{CHK={at:ShiftData.status.checkedAt,why:(e.detail&&e.detail.why)||TRIG};const el=document.getElementById("lastchk");if(el)el.textContent=chkTxt()});
 window.addEventListener("shifthub:data",e=>{if(e.detail&&e.detail.tab==="Meta"){meta=null;metaAt=0}if(!document.querySelector("#app input:focus")&&!$("#sheet")&&["home","whoson","labor","rushes","speed","guest","tools","cover","outofstock","prerush","ot","goals","grades","tasks"].includes(cur))show(cur)});
-app.addEventListener("input",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
+app.addEventListener("input",e=>{if(e.target.id==="tt"||e.target.id==="tn"){if(TASKERR){TASKERR="";const el=document.querySelector("#app .err");if(el)el.remove()}}
+ if(e.target.matches&&e.target.matches("[data-tm]")){const o=e.target.parentElement.querySelector(".tmok"),m=tmin(e.target.value);if(o)o.textContent=e.target.value.trim()?(isNaN(m)?"Not a time yet":"= "+ampm(m)):""}});
 app.addEventListener("change",e=>{if(e.target.matches&&e.target.matches("[data-tm]")){const m=tmin(e.target.value);if(!isNaN(m))e.target.value=ampm(m)}if(e.target.id==="cvsel"){COV.sel=e.target.value;const m=$("#cvman");if(m)m.style.display=e.target.value==="manual"?"":"none"}});
 setSrc(false);verCheck();show("home");
 if(window.caches)caches.keys().then(ks=>ks.filter(k=>k.startsWith("shifthub-")&&k!=="shifthub-"+APPVER).forEach(k=>caches.delete(k))).catch(()=>{});

@@ -250,12 +250,12 @@ ok(tabList.indexOf("PreRushBank")<0,"PreRushBank is not a tab");
 ok(!/PreRushBank/.test(gs),"Code.gs does not read PreRushBank");
 ok(!/SHIFTHUB_KEY\s*=\s*['"][^'"]+['"]/.test(gs),"no key literal");
 const ver=JSON.parse(fs.readFileSync(path.join(__dirname,"..","version.json"),"utf8"));
-eq(ver.v,"v45","app version v45");
+eq(ver.v,"v46","app version v46");
 const sw=fs.readFileSync(path.join(__dirname,"..","sw.js"),"utf8");
-ok(/shifthub-v44/.test(sw)===false&&/shifthub-v45/.test(sw),"service worker cache v45");
+ok(/shifthub-v46/.test(sw),"service worker cache v46");
 ok(/"callouts"/.test(sw),"service worker caches callouts");
 const app=fs.readFileSync(path.join(__dirname,"..","js","app.js"),"utf8");
-ok(/const APPVER="v45"/.test(app),"in-app version v45");
+ok(/const APPVER="v46"/.test(app),"in-app version v46");
 ok(!/PreRushBank/.test(app),"app does not read PreRushBank");
 ok(/noindex/.test(fs.readFileSync(path.join(__dirname,"..","index.html"),"utf8")),"noindex stays");
 
@@ -271,7 +271,8 @@ eq(picked&&picked.date,"2026-11-25","latest labor is Wednesday, not a future Thu
 eq(picked&&picked.hour,21,"9 PM is the latest hour at or before 9:20 AM");
 eq([picked.pct,picked.hours],[20.1,9.06],"percent and hours come from that same row");
 eq(picked.prior,true,"a prior shift is labeled as prior");
-eq(picked.label,"Last night 9 PM","prior evening is last night, not Latest now");
+eq(picked.label,"Wed 9 PM · stale","a row from before today is named by the day and marked stale");
+eq(picked.stale,true,"older than today is stale on Home and Labor");
 const morning=[].concat(laborRows,{row_type:"DATA",date:"2026-11-26",hour:"08:00",labor_pct:"22.4",actual_hours:"6.5",target_pct:"21.5"});
 const nowRow=SC.laborPick(morning,thu);
 eq([nowRow.date,nowRow.hour,nowRow.pct,nowRow.prior],["2026-11-26",8,22.4,false],"today's latest hour at or before now wins");
@@ -288,8 +289,13 @@ eq(SC.asPct(""),null,"blank percent");
 const frac=SC.viewGrade({date:"2026-11-26",shift:"6a-2p",manager:"Hana L",grade:"B",labor_pct:"0.231",labor_pct_target:"21",low_surveys:"0.1125"});
 eq(frac.laborPct,23.1,"grade labor fraction is a percent");
 eq(frac.surveyText,"11%","low survey fraction rounds to a percent");
-const blankLabor=SC.viewGrade({date:"2026-11-26",shift:"2p-10p",manager:"Gus K",grade:"C",labor_pct:"",hours:"9.06",hours_cap:"42",low_surveys:"2"});
-eq(Math.round(blankLabor.laborPct*10)/10,21.6,"blank labor percent falls back to hours over the cap");
+const blankLabor=SC.viewGrade({date:"2026-11-26",shift:"2p-10p",manager:"Gus K",grade:"C",labor_pct:"",labor_pct_target:"21.5",hours:"58.77",hours_cap:"61.5",low_surveys:"2",goals_hit:"1 of 4 fully met (labor). Score 97 (A): sales 20/20 (101% of projection), labor 30/30, speed 46.6/50"});
+eq(blankLabor.laborPct,null,"blank labor_pct is not hours divided by the cap");
+eq(blankLabor.hoursLine,"Hours 58.8 of 61.5 needed","hours are shown against the hours need");
+eq(blankLabor.hoursTone,"good","58.8 is under a 61.5 need");
+eq(blankLabor.laborPctTarget,21.5,"the percent target stays on the row and is not the hours comparison");
+const overHours=SC.viewGrade({date:"2026-11-26",shift:"6a-2p",labor_pct:"",hours:"70",hours_cap:"61.5"});
+eq(overHours.hoursTone,"bad","hours over the need is over, not a labor percent");
 eq(blankLabor.surveyText,"2","a count above 1 stays a count");
 eq(SC.surveyText(0),"0","zero surveys stay zero");
 const dup=SC.gradeGroups([
@@ -304,6 +310,14 @@ eq(keep[0].managers.map(g=>g.manager),["Ian C"],"a different manager still shows
 
 // 16. My tasks and the assignee list share one name list, including assignees missing from crew.
 eq(TL.peopleNames([["Ana R","Ben T"],["Jason O"],["Hana Lee"]]),["Ana R","Ben T","Hana L","Jason O"],"union of crew, managers, and assignees");
+eq(TL.peopleNames([["Cody","Cody O","Luz","LUZ N","MANUELLA M","Manuella"]]),["Cody O","Luz N","Manuella M"],"one first name drops when one First L exists");
+eq(TL.peopleNames([["Cody","Cody O","Cody B"]]),["Cody","Cody B","Cody O"],"two full names keep a bare first name");
+eq(SC.isoD(46349),"2026-11-23","Sheets serial 46349 is 2026-11-23");
+eq(SC.isoD("46349"),"2026-11-23","serial dates arrive as text too");
+eq(SC.isoD(21.5),"","a percent is not a serial date");
+const serialGrade=SC.viewGrade({date:46349,shift:"6a-2p",manager:"Hana L",grade:"A",labor_pct:"",hours:"58.77",hours_cap:"61.5"});
+eq(serialGrade.date,"2026-11-23","a grade serial date is a real day");
+eq(SC.recentGrades([serialGrade&&{date:46349,shift:"6a-2p",grade:"A",manager:"Hana L"}],ET("2026-11-26T15:00:00Z"),7).length,1,"serial-dated grade stays inside the week");
 const block=/\/\*TASKLIB_BEGIN\*\/([\s\S]*?)\/\*TASKLIB_END\*\//.exec(gs);
 ok(!!block,"task lib block");
 let GS=null;if(block){GS=new Function(block[1]+"\nreturn TaskLib;")()}

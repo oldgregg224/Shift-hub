@@ -72,5 +72,7 @@ const fresh=P.preRushHeader({raw:"2026-11-26 6a-2p",date:"2026-11-26",shift:"6a-
 eq(fresh.match,true,"matching column J is this shift");
 eq(fresh.title,"This shift","current pre-rush title");
 eq(fresh.warning,"","no warning when the shift matches");
+eq(P.preShift([{item:"Eggs",shift:"46349 10p-6a"}]).date,"2026-11-23","a serial date in the pre-rush shift column parses");
+ok(/function preHome[\s\S]{0,700}preRushHeader/.test(appJs),"the home pre-rush card uses the same shift check");
 console.log(`${n-f}/${n} passed`);
 process.exit(f?1:0);

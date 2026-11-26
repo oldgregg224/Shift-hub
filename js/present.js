@@ -2,7 +2,9 @@
 // Unit-tested in tests/speed.test.js and tests/prerush.test.js.
 (function(root){
 const pad=n=>String(n).padStart(2,"0");
-function isoDate(s){s=String(s||"").trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+function serialDate(v){const s=String(v==null?"":v).trim();if(!/^\d{5}(\.0+)?$/.test(s))return "";const n=+s;if(!(n>=30000&&n<=80000))return "";
+ return new Date(Date.UTC(1899,11,30)+Math.floor(n)*86400000).toISOString().slice(0,10)}
+function isoDate(s){const serial=serialDate(s);if(serial)return serial;s=String(s||"").trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
  if(m)return m[1]+"-"+pad(m[2])+"-"+pad(m[3]);
  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
  if(m){let y=m[3];if(y.length===2)y="20"+y;return y+"-"+pad(m[1])+"-"+pad(m[2])}
@@ -73,7 +75,9 @@ function preNext(G,nowMin,today){const up=(G||[]).filter(g=>g.last!=null&&g.last
 // PreRush holds one shift. Column "shift" looks like "2026-11-23 6a-2p". Most common value wins. Blank hides the label.
 function preShift(rows){const counts=new Map();(rows||[]).forEach(x=>{const raw=String(x&&x.shift||"").trim();if(!raw)return;counts.set(raw,(counts.get(raw)||0)+1)});
  if(!counts.size)return null;const raw=[...counts.keys()].sort((a,b)=>(counts.get(b)-counts.get(a))||(a<b?-1:a>b?1:0))[0];
- const m=/^(\d{4}-\d{2}-\d{2})\s+(.+)$/.exec(raw);return m?{raw,date:m[1],shift:m[2].trim()}:{raw,date:"",shift:raw}}
+ let m=/^(\d{4}-\d{2}-\d{2})\s+(.+)$/.exec(raw);if(m)return {raw,date:m[1],shift:m[2].trim()};
+ m=/^(\d{5}(?:\.0+)?)\s+(.+)$/.exec(raw);if(m){const d=serialDate(m[1]);if(d)return {raw,date:d,shift:m[2].trim()}}
+ return {raw,date:"",shift:raw}}
 function normShiftId(v){const t=String(v||"").toLowerCase().replace(/\s|:00|m\b/g,"").replace(/[–—]+/g,"-");
  if(t.indexOf("10p")>=0)return "10p-6a";if(t.indexOf("6a")>=0)return "6a-2p";if(t.indexOf("2p")>=0)return "2p-10p";return ""}
 function preRushHeader(parsed,current){if(!parsed)return null;const id=normShiftId(parsed.shift),curId=current&&normShiftId(current.shift);
@@ -83,6 +87,7 @@ function preRushHeader(parsed,current){if(!parsed)return null;const id=normShift
  const when=[wd,parsed.shift].filter(Boolean).join(" ");
  return {match:false,title:"Last shift's pre-rush"+(when?" ("+when+")":""),warning:"Not updated for this shift yet",when,shift:id,date:parsed.date||""}}
 function freshLabel(o){o=o||{};if(o.pending&&!o.hasRows&&!o.when)return "Checking…";
+ if(o.emptyTasks&&!o.pending&&!o.hasRows)return "No tasks yet";
  if(o.missing&&!o.pending&&!o.hasRows)return "Not in the Sheet yet";
  if(o.when)return "Updated "+o.when+(o.stale?" · stale":"");
  if(o.hasRows)return "Updated";return ""}
